@@ -1,0 +1,73 @@
+# Build and test both packages.
+#
+# They live in one repository because they are one library expressed twice: the
+# same routes, the same field map, the same three outcomes. A change to the
+# model that lands in only one of them is a bug, and running both suites in the
+# same job matrix is the cheapest way to notice.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  javascript:
+    name: JavaScript (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    strategy:
+      fail-fast: false
+      matrix:
+        # 18 is the floor because the client uses the global fetch.
+        node: ['18', '20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: js/package-lock.json
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      # Installed rather than run off src/ so the packaging metadata is
+      # exercised too: a package that imports in the repo but not once
+      # installed is a release nobody can use.
+      - name: Install the package
+        run: python -m pip install .
+
+      - name: Test
+        run: python -m unittest discover -s tests -v

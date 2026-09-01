@@ -1,0 +1,52 @@
+{
+  "name": "@kingdom-community/session-client",
+  "version": "0.1.0",
+  "description": "Client for a bearer-token identity service — register, login, validate, refresh, logout — with success, refusal and unavailable as three distinct outcomes.",
+  "license": "MIT",
+  "author": "Daniel McCoy Stephenson",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kingdom-community/session-client.git",
+    "directory": "js"
+  },
+  "homepage": "https://github.com/kingdom-community/session-client#readme",
+  "bugs": {
+    "url": "https://github.com/kingdom-community/session-client/issues"
+  },
+  "keywords": [
+    "authentication",
+    "auth",
+    "session",
+    "bearer-token",
+    "identity",
+    "login",
+    "api-client",
+    "typescript"
+  ],
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

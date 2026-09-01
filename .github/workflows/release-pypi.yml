@@ -1,0 +1,71 @@
+# Publish session-client to PyPI.
+#
+# workflow_dispatch ONLY. Releases are a deliberate act: nothing here fires on a
+# push, a tag or a merge, so an accidental commit can never publish a version.
+# The version published is whatever is in python/pyproject.toml on the chosen
+# ref; bump it in a pull request first.
+#
+# Uses PyPI trusted publishing (OIDC) — no long-lived API token in the
+# repository. Configure the publisher on PyPI for this repository and the
+# `pypi` environment before the first run, or set PYPI_API_TOKEN and swap the
+# password input back in.
+name: Release (PyPI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and check the distributions without publishing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # The tests gate the release as well as the pull request. A release is the
+      # one build nobody gets to retry quietly.
+      - name: Install and test
+        run: |
+          python -m pip install .
+          python -m unittest discover -s tests -v
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          python -m twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: python/dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
