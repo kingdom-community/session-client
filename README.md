@@ -135,7 +135,7 @@ field this library has no opinion about is one attribute access away.
 (cd python && PYTHONPATH=src python3 -m unittest discover -s tests)      # stdlib unittest, no deps
 ```
 
-CI runs both suites on every push and pull request.
+CI runs both suites on every pull request, and on every push to `main`.
 
 ## License
 
