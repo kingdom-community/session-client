@@ -85,7 +85,7 @@ cannot be overridden through `headers`.
 | `logout(token)` | `LogoutResult` | **no, by contract** |
 | `isReachable()` | `boolean` | no — that is what it reports |
 
-Every result is a discriminated union on `ok`:
+Every result except `LogoutResult` is a discriminated union on `ok`:
 
 ```ts
 type LoginResult =

@@ -119,8 +119,9 @@ Both packages take the same options. Only the base URL is required.
 | message fields | `message`, `error` | Body keys searched, in order, for a human-readable refusal message. |
 | headers | none | Extra headers on every request. `Authorization` is set per call. |
 
-Anything the client does not model is still on every result's `raw` property,
-so a field this library has no opinion about is one attribute access away.
+Anything the client does not model is still on the `raw` property of every
+result except the logout one, which reports flags rather than a body, so a
+field this library has no opinion about is one attribute access away.
 
 ## Per-package documentation
 
@@ -130,11 +131,11 @@ so a field this library has no opinion about is one attribute access away.
 ## Development
 
 ```bash
-cd js      && npm install && npm test      # vitest
-cd python  && python3 -m unittest discover -s tests   # stdlib unittest, no deps
+(cd js && npm install && npm test)                                       # vitest
+(cd python && PYTHONPATH=src python3 -m unittest discover -s tests)      # stdlib unittest, no deps
 ```
 
-CI runs both suites on every push and pull request.
+CI runs both suites on every pull request, and on every push to `main`.
 
 ## License
 

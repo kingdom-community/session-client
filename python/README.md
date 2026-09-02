@@ -79,8 +79,9 @@ raises `ValueError` rather than being silently ignored.
 | `logout(token)` | `LogoutResult` | **no, by contract** |
 | `is_reachable()` | `bool` | no — that is what it reports |
 
-Results are frozen dataclasses. Every one carries `ok` (a class attribute, so
-`result.ok` works without unpacking) and `raw`, the parsed response body:
+Results are frozen dataclasses. Every one except `LogoutResult` carries `ok` (a
+class attribute, so `result.ok` works without unpacking) and `raw`, the parsed
+response body:
 
 ```python
 LoginSuccess(ok=True,  token=..., expires_at=..., refresh_token=..., raw=...)
