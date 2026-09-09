@@ -439,6 +439,26 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
         self.assertNotIn("hunter2", rendered)
         self.assertNotIn("example.test", rendered)
 
+    # A base_url with no scheme is a plausible typo, and urllib cannot build a
+    # request from it at all -- it raises before any socket is opened. That is
+    # UNAVAILABLE like any other transport failure, and the three tests below
+    # exist because the bare ValueError urllib raises used to escape instead,
+    # unwrappable by the one exception type this library documents.
+
+    def test_unavailable_a_url_that_cannot_be_used_is_not_a_refusal(self):
+        with self.assertRaises(ServiceUnavailableError) as ctx:
+            SessionClient("accounts.example.test").login("alice", "correct-horse")
+        self.assertIsNone(ctx.exception.status)
+        self.assertNotIn("example.test", str(ctx.exception))
+
+    def test_logout_never_raises_even_when_the_url_cannot_be_used(self):
+        result = SessionClient("accounts.example.test").logout("sometoken")
+        self.assertFalse(result.revoked)
+        self.assertTrue(result.unavailable)
+
+    def test_is_reachable_answers_false_when_the_url_cannot_be_used(self):
+        self.assertFalse(SessionClient("accounts.example.test").is_reachable())
+
 
 if __name__ == "__main__":
     unittest.main()

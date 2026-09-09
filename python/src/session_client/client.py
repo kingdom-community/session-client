@@ -307,8 +307,15 @@ class SessionClient:
             headers["Content-Type"] = "application/json"
         if token:
             headers["Authorization"] = "Bearer %s" % token
-        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
+            # Building the Request is inside the try because doing so PARSES
+            # the url. A base_url with no scheme ("accounts.example.com")
+            # makes urllib raise ValueError right here, before any socket is
+            # opened -- and a bare ValueError escaping is the one failure
+            # logout is contractually not allowed to have.
+            request = urllib.request.Request(
+                url, data=data, headers=headers, method=method
+            )
             with urllib.request.urlopen(
                 request, timeout=self.timeout if timeout is None else timeout
             ) as response:
@@ -318,10 +325,12 @@ class SessionClient:
             # A non-2xx is still an ANSWER. Whether it is a refusal or an
             # outage is decided by the caller, not here.
             return int(error.code), self._parse(error.read())
-        except (urllib.error.URLError, TimeoutError, OSError):
-            # Connection refused, DNS failure, TLS failure, timeout. The
-            # underlying message is deliberately not carried: it names hosts
-            # and network topology, and this error is shown to users.
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+            # Connection refused, DNS failure, TLS failure, timeout, or a url
+            # that cannot be used at all. The underlying message is
+            # deliberately not carried: it names hosts and network topology --
+            # the ValueError embeds the whole url -- and this error is shown to
+            # users.
             raise ServiceUnavailableError()
 
     @staticmethod

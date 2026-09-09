@@ -402,4 +402,32 @@ describe('the three outcomes are kept apart', () => {
         expect(rendered).not.toContain('hunter2');
         expect(rendered).not.toContain('example.test');
     });
+
+    // A base URL with no scheme is a plausible typo, and the real `fetch`
+    // cannot parse it — it rejects before any socket is opened, so these three
+    // need no stub and reach no network. They pin behaviour this package
+    // already has, because the Python package did not have it: there, urllib
+    // raised a bare ValueError that escaped every method.
+    const UNPARSEABLE = 'accounts.example.test';
+
+    it('UNAVAILABLE: a base URL with no scheme is not a refusal', async () => {
+        const client = new SessionClient({baseUrl: UNPARSEABLE});
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBeNull();
+        expect((error as Error).message).not.toContain('example.test');
+    });
+
+    it('logout still never throws when the base URL cannot be used', async () => {
+        const client = new SessionClient({baseUrl: UNPARSEABLE});
+        await expect(client.logout('sometoken')).resolves.toMatchObject({
+            revoked: false,
+            unavailable: true
+        });
+    });
+
+    it('isReachable answers false when the base URL cannot be used', async () => {
+        const client = new SessionClient({baseUrl: UNPARSEABLE});
+        await expect(client.isReachable()).resolves.toBe(false);
+    });
 });
