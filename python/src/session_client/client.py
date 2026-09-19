@@ -29,6 +29,7 @@ Standard library only: ``urllib.request``, no third-party HTTP dependency.
 """
 
 import json
+import socket
 import urllib.error
 import urllib.request
 from dataclasses import replace
@@ -63,6 +64,24 @@ def _as_mapping(value: Any) -> Optional[Dict[str, Any]]:
 
 def _non_empty_string(value: Any) -> Optional[str]:
     return value if isinstance(value, str) and value.strip() != "" else None
+
+
+def _timed_out(error: BaseException) -> bool:
+    """Was this transport failure the configured timeout expiring?
+
+    Version-sensitive across the support floor, which is why it is a function
+    and not an ``except`` clause: on 3.10+ ``socket.timeout`` IS
+    ``TimeoutError``, but on 3.8 and 3.9 it is a distinct ``OSError``
+    subclass, so both are named. And ``urllib`` wraps a timeout raised while
+    the request is being sent in a ``URLError`` whose ``reason`` is the
+    original, while one raised waiting for the response escapes bare -- so
+    the wrapper's ``reason`` is checked as well as the error itself.
+    """
+    timeouts = (socket.timeout, TimeoutError)
+    if isinstance(error, timeouts):
+        return True
+    reason = getattr(error, "reason", None)
+    return isinstance(reason, timeouts)
 
 
 def _overlay(base: Any, overrides: Any, name: str) -> Any:
@@ -325,13 +344,19 @@ class SessionClient:
             # A non-2xx is still an ANSWER. Whether it is a refusal or an
             # outage is decided by the caller, not here.
             return int(error.code), self._parse(error.read())
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
             # Connection refused, DNS failure, TLS failure, timeout, or a url
             # that cannot be used at all. The underlying message is
             # deliberately not carried: it names hosts and network topology --
             # the ValueError embeds the whole url -- and this error is shown to
-            # users.
-            raise ServiceUnavailableError()
+            # users. A timeout is told apart from the rest, because "did not
+            # answer in time" and "unreachable" point an operator at different
+            # problems -- and because the TypeScript package already says so.
+            raise ServiceUnavailableError(
+                "the identity service did not answer in time"
+                if _timed_out(error)
+                else "the identity service is unreachable"
+            )
 
     @staticmethod
     def _parse(raw: Optional[bytes]) -> Any:

@@ -327,20 +327,26 @@ describe('the three outcomes are kept apart', () => {
 
     it('UNAVAILABLE: a connection failure is not a wrong password', async () => {
         const {client} = clientWith([new Error('ECONNREFUSED')]);
-        await expect(client.login('alice', 'correct-horse')).rejects.toBeInstanceOf(
-            ServiceUnavailableError
-        );
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBeNull();
+        expect((error as Error).message).toBe('the identity service is unreachable');
     });
 
+    // A timeout is told apart from a bare transport failure in the message,
+    // and in nothing else: still UNAVAILABLE, still no status. The wording is
+    // asserted, not merely the type, because it must match the Python
+    // package's exactly.
     it('UNAVAILABLE: a timeout is not a wrong password', async () => {
         const hang = (async (_url: string, init: RequestInit = {}) =>
             new Promise((_resolve, reject) => {
                 init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
             })) as unknown as typeof globalThis.fetch;
         const client = new SessionClient({baseUrl: BASE_URL, fetch: hang, timeoutMs: 5});
-        await expect(client.login('alice', 'correct-horse')).rejects.toBeInstanceOf(
-            ServiceUnavailableError
-        );
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBeNull();
+        expect((error as Error).message).toBe('the identity service did not answer in time');
     });
 
     it('UNAVAILABLE: a 200 with a garbage body is not a success', async () => {

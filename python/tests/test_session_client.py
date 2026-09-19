@@ -10,6 +10,7 @@ collapsed into each other.
 Run:  python3 -m unittest discover -s tests -v   (from python/)
 """
 import json
+import socket
 import unittest
 import urllib.error
 from unittest import mock
@@ -365,11 +366,32 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().login("alice", "correct-horse")
         self.assertIsNone(ctx.exception.status)
+        self.assertEqual(str(ctx.exception), "the identity service is unreachable")
 
+    # A timeout is told apart from a bare transport failure in the message,
+    # and in nothing else: still UNAVAILABLE, still no status. The wording is
+    # asserted, not merely the type, because it must match the TypeScript
+    # package's exactly -- and the shapes below are the ones urllib actually
+    # produces across the support floor: on 3.8 and 3.9 ``socket.timeout`` is
+    # not ``TimeoutError``, and a timeout while sending arrives wrapped in a
+    # ``URLError`` while one waiting for the response arrives bare.
     def test_unavailable_a_timeout_is_not_a_wrong_password(self):
-        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
-            with self.assertRaises(ServiceUnavailableError):
-                client().login("alice", "correct-horse")
+        shapes = {
+            "TimeoutError": TimeoutError("timed out"),
+            "socket.timeout": socket.timeout("timed out"),
+            "URLError wrapping socket.timeout": urllib.error.URLError(
+                socket.timeout("_ssl.c:1059: The handshake operation timed out")
+            ),
+        }
+        for name, shape in shapes.items():
+            with self.subTest(shape=name):
+                with mock.patch("urllib.request.urlopen", side_effect=shape):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().login("alice", "correct-horse")
+                self.assertIsNone(ctx.exception.status)
+                self.assertEqual(
+                    str(ctx.exception), "the identity service did not answer in time"
+                )
 
     def test_unavailable_a_200_with_a_garbage_body_is_not_a_success(self):
         with mock.patch(
