@@ -11,6 +11,7 @@ Run:  python3 -m unittest discover -s tests -v   (from python/)
 """
 import json
 import socket
+import traceback
 import unittest
 import urllib.error
 from unittest import mock
@@ -459,6 +460,36 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
                 client().login("alice", "hunter2")
         rendered = str(ctx.exception)
         self.assertNotIn("hunter2", rendered)
+        self.assertNotIn("example.test", rendered)
+
+    def test_the_unavailable_traceback_does_not_chain_the_transport_error(self):
+        # The message alone is not enough: an exception raised while handling
+        # another carries it as __context__, and a logged traceback prints it.
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=urllib.error.URLError(
+                "connection refused to %s while sending hunter2" % BASE_URL
+            ),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().login("alice", "hunter2")
+        rendered = "".join(
+            traceback.format_exception(
+                type(ctx.exception), ctx.exception, ctx.exception.__traceback__
+            )
+        )
+        self.assertNotIn("hunter2", rendered)
+        self.assertNotIn("example.test", rendered)
+        self.assertIsNone(ctx.exception.__cause__)
+
+    def test_the_unavailable_traceback_does_not_chain_the_url(self):
+        with self.assertRaises(ServiceUnavailableError) as ctx:
+            SessionClient("accounts.example.test").login("alice", "correct-horse")
+        rendered = "".join(
+            traceback.format_exception(
+                type(ctx.exception), ctx.exception, ctx.exception.__traceback__
+            )
+        )
         self.assertNotIn("example.test", rendered)
 
     # A base_url with no scheme is a plausible typo, and urllib cannot build a

@@ -409,6 +409,15 @@ describe('the three outcomes are kept apart', () => {
         expect(rendered).not.toContain('example.test');
     });
 
+    it('the unavailable error does not carry the transport error as its cause', async () => {
+        // Mirrors the Python package, where a raise inside an except block
+        // chains the original unless told not to; here nothing is attached.
+        const {client} = clientWith([new Error(`connect ECONNREFUSED ${BASE_URL} while sending hunter2`)]);
+        const error = await client.login('alice', 'hunter2').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect('cause' in (error as object)).toBe(false);
+    });
+
     // A base URL with no scheme is a plausible typo, and the real `fetch`
     // cannot parse it — it rejects before any socket is opened, so these three
     // need no stub and reach no network. They pin behaviour this package
