@@ -352,11 +352,15 @@ class SessionClient:
             # users. A timeout is told apart from the rest, because "did not
             # answer in time" and "unreachable" point an operator at different
             # problems -- and because the TypeScript package already says so.
+            # ``from None`` because a raise inside an ``except`` block
+            # otherwise chains the original as ``__context__``, and every
+            # rendered traceback would print the very message kept out of
+            # this one.
             raise ServiceUnavailableError(
                 "the identity service did not answer in time"
                 if _timed_out(error)
                 else "the identity service is unreachable"
-            )
+            ) from None
 
     @staticmethod
     def _parse(raw: Optional[bytes]) -> Any:
