@@ -9,6 +9,7 @@ collapsed into each other.
 
 Run:  python3 -m unittest discover -s tests -v   (from python/)
 """
+import http.client
 import json
 import socket
 import traceback
@@ -511,6 +512,58 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
 
     def test_is_reachable_answers_false_when_the_url_cannot_be_used(self):
         self.assertFalse(SessionClient("accounts.example.test").is_reachable())
+
+    # Something that answers the socket but does not speak HTTP -- a TLS or
+    # SSH port, a misconfigured proxy -- makes urllib raise
+    # ``http.client.BadStatusLine``, which is not an ``OSError`` and used to
+    # escape every method, logout included.
+
+    def test_unavailable_an_answer_that_is_not_http_is_not_a_refusal(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=http.client.BadStatusLine("SSH-2.0-OpenSSH_9.6 hunter2"),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().login("alice", "hunter2")
+        self.assertIsNone(ctx.exception.status)
+        self.assertEqual(str(ctx.exception), "the identity service is unreachable")
+
+    def test_logout_never_raises_when_the_answer_is_not_http(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=http.client.BadStatusLine("SSH-2.0-OpenSSH_9.6"),
+        ):
+            result = client().logout("sometoken")
+        self.assertFalse(result.revoked)
+        self.assertTrue(result.unavailable)
+
+    def test_is_reachable_answers_false_when_the_answer_is_not_http(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=http.client.BadStatusLine("SSH-2.0-OpenSSH_9.6"),
+        ):
+            self.assertFalse(client().is_reachable())
+
+    # A body cut off part-way makes ``read()`` raise ``IncompleteRead``. The
+    # status line did arrive, so it is kept and the body is treated like one
+    # that will not parse -- what the TypeScript package already does.
+
+    def test_unavailable_a_200_whose_body_is_cut_off_is_not_a_login(self):
+        resp = _mock_response(None)
+        resp.read.side_effect = http.client.IncompleteRead(b'{"tok', 95)
+        with mock.patch("urllib.request.urlopen", return_value=resp):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().login("alice", "correct-horse")
+        self.assertEqual(ctx.exception.status, 200)
+
+    def test_refusal_a_401_whose_body_is_cut_off_is_still_a_refusal(self):
+        err = _http_error(401, None)
+        err.read.side_effect = http.client.IncompleteRead(b'{"mes', 95)
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            result = client().login("alice", "wrong")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status, 401)
+        self.assertEqual(result.message, "Those credentials were not accepted.")
 
 
 if __name__ == "__main__":

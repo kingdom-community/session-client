@@ -445,4 +445,32 @@ describe('the three outcomes are kept apart', () => {
         const client = new SessionClient({baseUrl: UNPARSEABLE});
         await expect(client.isReachable()).resolves.toBe(false);
     });
+
+    // A body cut off part-way makes `text()` reject after the status arrived.
+    // These pin behaviour this package already has, because the Python
+    // package did not: there, urllib's IncompleteRead escaped every method.
+    const cutOff = (status: number) =>
+        (async () => ({
+            status,
+            text: async () => {
+                throw new TypeError('terminated');
+            }
+        })) as unknown as typeof globalThis.fetch;
+
+    it('UNAVAILABLE: a 200 whose body is cut off is not a login', async () => {
+        const client = new SessionClient({baseUrl: BASE_URL, fetch: cutOff(200)});
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+    });
+
+    it('REFUSAL: a 401 whose body is cut off is still a refusal', async () => {
+        const client = new SessionClient({baseUrl: BASE_URL, fetch: cutOff(401)});
+        await expect(client.login('alice', 'wrong')).resolves.toEqual({
+            ok: false,
+            status: 401,
+            message: 'Those credentials were not accepted.',
+            raw: null
+        });
+    });
 });
