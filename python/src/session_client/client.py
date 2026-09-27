@@ -28,6 +28,7 @@ for the policy to be described, and get it wrong.
 Standard library only: ``urllib.request``, no third-party HTTP dependency.
 """
 
+import http.client
 import json
 import socket
 import urllib.error
@@ -339,15 +340,24 @@ class SessionClient:
                 request, timeout=self.timeout if timeout is None else timeout
             ) as response:
                 status = getattr(response, "status", None) or response.getcode()
-                return int(status), self._parse(response.read())
+                return int(status), self._read_body(response)
         except urllib.error.HTTPError as error:
             # A non-2xx is still an ANSWER. Whether it is a refusal or an
             # outage is decided by the caller, not here.
-            return int(error.code), self._parse(error.read())
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as error:
-            # Connection refused, DNS failure, TLS failure, timeout, or a url
-            # that cannot be used at all. The underlying message is
-            # deliberately not carried: it names hosts and network topology --
+            return int(error.code), self._read_body(error)
+        except (
+            urllib.error.URLError,
+            http.client.HTTPException,
+            TimeoutError,
+            OSError,
+            ValueError,
+        ) as error:
+            # Connection refused, DNS failure, TLS failure, timeout, a reply
+            # that is not HTTP at all, or a url that cannot be used at all.
+            # ``http.client.HTTPException`` is named because it is not an
+            # ``OSError``: urllib lets a garbled status line escape unwrapped,
+            # and it would otherwise escape logout too. The underlying message
+            # is deliberately not carried: it names hosts and network topology --
             # the ValueError embeds the whole url -- and this error is shown to
             # users. A timeout is told apart from the rest, because "did not
             # answer in time" and "unreachable" point an operator at different
@@ -361,6 +371,17 @@ class SessionClient:
                 if _timed_out(error)
                 else "the identity service is unreachable"
             ) from None
+
+    @classmethod
+    def _read_body(cls, stream: Any) -> Any:
+        try:
+            raw = stream.read()
+        except http.client.HTTPException:
+            # A body cut off part-way is no more an answer than an HTML error
+            # page -- but the status line before it WAS one, so it is kept and
+            # the caller decides, exactly as for a body that will not parse.
+            return None
+        return cls._parse(raw)
 
     @staticmethod
     def _parse(raw: Optional[bytes]) -> Any:
