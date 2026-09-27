@@ -356,8 +356,8 @@ class SessionClient:
             # that is not HTTP at all, or a url that cannot be used at all.
             # ``http.client.HTTPException`` is named because it is not an
             # ``OSError``: urllib lets a garbled status line escape unwrapped,
-            # and it would otherwise escape logout too. The underlying message is
-            # deliberately not carried: it names hosts and network topology --
+            # and it would otherwise escape logout too. The underlying message
+            # is deliberately not carried: it names hosts and network topology --
             # the ValueError embeds the whole url -- and this error is shown to
             # users. A timeout is told apart from the rest, because "did not
             # answer in time" and "unreachable" point an operator at different
