@@ -438,6 +438,53 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             with self.assertRaises(ServiceUnavailableError):
                 client().validate_session("t")
 
+    # Valid JSON is not the same as an answer: an object with neither a
+    # ``valid`` flag nor a name says nothing about a session, so validate fails
+    # closed on it exactly as on a body that will not parse.
+    def test_unavailable_a_200_that_names_no_session_is_not_a_valid_session(self):
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response({"roles": ["admin"]})
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception), "the identity service answered 200 without a session"
+        )
+
+    def test_unavailable_a_200_without_a_token_is_not_a_renewed_session(self):
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response({"tokenType": "Bearer"})
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().refresh_session("the-refresh-token")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception), "the identity service answered HTTP 200 without a token"
+        )
+
+    def test_unavailable_a_5xx_on_refresh_does_not_become_could_not_be_renewed(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(503, {"message": "upstream exploded"}),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().refresh_session("the-refresh-token")
+        self.assertEqual(ctx.exception.status, 503)
+
+    def test_logout_reports_a_5xx_as_unavailable_rather_than_raising_or_refusing(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(503, {"message": "upstream exploded"}),
+        ):
+            result = client().logout("sometoken")
+        self.assertFalse(result.revoked)
+        self.assertTrue(result.unavailable)
+        self.assertEqual(result.status, 503)
+        self.assertEqual(
+            result.message, "the identity service could not confirm the sign-out"
+        )
+
     def test_logout_still_lets_the_caller_clear_local_state_during_an_outage(self):
         # Note what this does NOT do: raise. A caller must be able to sign
         # somebody out of their own browser during an outage without wrapping

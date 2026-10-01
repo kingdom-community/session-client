@@ -389,6 +389,42 @@ describe('the three outcomes are kept apart', () => {
         await expect(client.validateSession('t')).rejects.toBeInstanceOf(ServiceUnavailableError);
     });
 
+    // Valid JSON is not the same as an answer: an object with neither a
+    // `valid` flag nor a name says nothing about a session, so validate fails
+    // closed on it exactly as on a body that will not parse.
+    it('UNAVAILABLE: a 200 that names no session is not a valid session', async () => {
+        const {client} = clientWith([{status: 200, body: {roles: ['admin']}}]);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered 200 without a session');
+    });
+
+    it('UNAVAILABLE: a 200 with no token is not a renewed session', async () => {
+        const {client} = clientWith([{status: 200, body: {tokenType: 'Bearer'}}]);
+        const error = await client.refreshSession('the-refresh-token').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered HTTP 200 without a token');
+    });
+
+    it('UNAVAILABLE: a 5xx on refresh does not become "that session could not be renewed"', async () => {
+        const {client} = clientWith([{status: 503, body: {message: 'upstream exploded'}}]);
+        const error = await client.refreshSession('the-refresh-token').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(503);
+    });
+
+    it('logout reports a 5xx as unavailable rather than throwing or refusing', async () => {
+        const {client} = clientWith([{status: 503, body: {message: 'upstream exploded'}}]);
+        await expect(client.logout('sometoken')).resolves.toEqual({
+            revoked: false,
+            unavailable: true,
+            status: 503,
+            message: 'the identity service could not confirm the sign-out'
+        });
+    });
+
     it('logout still lets the caller clear local state when the service is down', async () => {
         const {client} = clientWith([new Error('ECONNREFUSED')]);
         // Note what this does NOT do: throw. A caller must be able to sign
