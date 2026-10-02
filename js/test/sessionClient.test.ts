@@ -509,4 +509,41 @@ describe('the three outcomes are kept apart', () => {
             raw: null
         });
     });
+
+    // A timeout that expires after the status arrived, while the body is still
+    // being read, is not a cut-off answer: the service did not answer in time.
+    // The status is not kept, and the wording matches the Python package.
+    const stallsMidBody = (status: number) =>
+        (async (_url: string, init: RequestInit = {}) => ({
+            status,
+            text: () =>
+                new Promise((_resolve, reject) => {
+                    init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+                })
+        })) as unknown as typeof globalThis.fetch;
+
+    it('UNAVAILABLE: a 200 whose body times out is not a login', async () => {
+        const client = new SessionClient({baseUrl: BASE_URL, fetch: stallsMidBody(200), timeoutMs: 5});
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBeNull();
+        expect((error as Error).message).toBe('the identity service did not answer in time');
+    });
+
+    it('UNAVAILABLE: a 401 whose body times out is not a refusal', async () => {
+        const client = new SessionClient({baseUrl: BASE_URL, fetch: stallsMidBody(401), timeoutMs: 5});
+        const error = await client.login('alice', 'wrong').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBeNull();
+        expect((error as Error).message).toBe('the identity service did not answer in time');
+    });
+
+    it('logout never throws when a 401 body times out', async () => {
+        const client = new SessionClient({baseUrl: BASE_URL, fetch: stallsMidBody(401), timeoutMs: 5});
+        await expect(client.logout('sometoken')).resolves.toMatchObject({
+            revoked: false,
+            unavailable: true,
+            status: null
+        });
+    });
 });

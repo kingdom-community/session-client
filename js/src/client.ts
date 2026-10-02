@@ -299,7 +299,14 @@ export class SessionClient {
             try {
                 const text = await response.text();
                 body = text === '' ? null : JSON.parse(text);
-            } catch {
+            } catch (error) {
+                if (timedOut) {
+                    // The timer is still armed while the body is read, and a
+                    // service that stops mid-body has not answered in time
+                    // any more than one that never starts. Rethrown to the
+                    // transport catch below, as the Python package does.
+                    throw error;
+                }
                 // An error page from a proxy in front of the service is HTML.
                 // A body that cannot be read is not an answer.
                 body = null;

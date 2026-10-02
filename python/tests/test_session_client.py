@@ -612,6 +612,43 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
         self.assertEqual(result.status, 401)
         self.assertEqual(result.message, "Those credentials were not accepted.")
 
+    # A timeout that expires after the status line, while the body is still
+    # being read, is not a cut-off answer: the service did not answer in time.
+    # The status is not kept, and the wording matches the TypeScript package.
+    # A non-2xx body is read inside the HTTPError handler, which is why the
+    # 401 shape is pinned separately -- its timeout used to escape logout.
+
+    def test_unavailable_a_200_whose_body_times_out_is_not_a_login(self):
+        resp = _mock_response(None)
+        resp.read.side_effect = socket.timeout("timed out")
+        with mock.patch("urllib.request.urlopen", return_value=resp):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().login("alice", "correct-horse")
+        self.assertIsNone(ctx.exception.status)
+        self.assertEqual(
+            str(ctx.exception), "the identity service did not answer in time"
+        )
+
+    def test_unavailable_a_401_whose_body_times_out_is_not_a_refusal(self):
+        err = _http_error(401, None)
+        err.read.side_effect = socket.timeout("timed out")
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().login("alice", "wrong")
+        self.assertIsNone(ctx.exception.status)
+        self.assertEqual(
+            str(ctx.exception), "the identity service did not answer in time"
+        )
+
+    def test_logout_never_raises_when_a_401_body_times_out(self):
+        err = _http_error(401, None)
+        err.read.side_effect = socket.timeout("timed out")
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            result = client().logout("sometoken")
+        self.assertFalse(result.revoked)
+        self.assertTrue(result.unavailable)
+        self.assertIsNone(result.status)
+
 
 if __name__ == "__main__":
     unittest.main()
