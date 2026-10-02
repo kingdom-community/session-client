@@ -381,6 +381,18 @@ class SessionClient:
             # page -- but the status line before it WAS one, so it is kept and
             # the caller decides, exactly as for a body that will not parse.
             return None
+        except OSError as error:
+            # A timeout or a dropped connection while the body is read is a
+            # transport failure, not a cut-off answer. Raised here rather than
+            # left to the ``except`` in ``_request``, because a non-2xx body
+            # is read INSIDE that ``except urllib.error.HTTPError`` handler,
+            # where its sibling clauses do not apply -- it would otherwise
+            # escape every method, logout included.
+            raise ServiceUnavailableError(
+                "the identity service did not answer in time"
+                if _timed_out(error)
+                else "the identity service is unreachable"
+            ) from None
         return cls._parse(raw)
 
     @staticmethod
