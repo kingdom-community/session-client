@@ -108,6 +108,21 @@ describe('construction', () => {
         await client.login('alice', 'correct-horse');
         expect(calls[0]!.headers['X-Api-Key']).toBe('k');
     });
+
+    it('lets no differently-cased extra header combine with the bearer token', async () => {
+        const {client, calls} = clientWith(
+            [{status: 200, body: {valid: true, username: 'alice'}}, {status: 200, body: TOKENS}],
+            {headers: {authorization: 'Basic abc', 'content-type': 'text/plain'}}
+        );
+        await client.validateSession('sometoken');
+        await client.login('alice', 'correct-horse');
+        const named = (headers: Record<string, string>, name: string) =>
+            Object.entries(headers)
+                .filter(([key]) => key.toLowerCase() === name)
+                .map(([, value]) => value);
+        expect(named(calls[0]!.headers, 'authorization')).toEqual(['Bearer sometoken']);
+        expect(named(calls[1]!.headers, 'content-type')).toEqual(['application/json']);
+    });
 });
 
 describe('login', () => {

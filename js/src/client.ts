@@ -57,6 +57,26 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 const nonEmptyString = (value: unknown): string | null =>
     typeof value === 'string' && value.trim() !== '' ? value : null;
 
+// Header names are case-insensitive, and `fetch` APPENDS each entry of a plain
+// record, so `authorization` beside `Authorization` goes out as one
+// comma-joined value rather than the bearer token. A later layer therefore
+// replaces an earlier one whatever its case — which is also what the Python
+// package gets from urllib, where every name is stored capitalised.
+const mergeHeaders = (...layers: Record<string, string>[]): Record<string, string> => {
+    const merged: Record<string, string> = {};
+    for (const layer of layers) {
+        for (const [name, value] of Object.entries(layer)) {
+            for (const existing of Object.keys(merged)) {
+                if (existing.toLowerCase() === name.toLowerCase()) {
+                    delete merged[existing];
+                }
+            }
+            merged[name] = value;
+        }
+    }
+    return merged;
+};
+
 export class SessionClient {
     private readonly baseUrl: string;
     private readonly routes: RouteMap;
@@ -286,12 +306,12 @@ export class SessionClient {
         try {
             const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
                 method: init.method ?? 'GET',
-                headers: {
-                    Accept: 'application/json',
-                    ...this.headers,
-                    ...(init.body === undefined ? {} : {'Content-Type': 'application/json'}),
-                    ...(init.token ? {Authorization: `Bearer ${init.token}`} : {})
-                },
+                headers: mergeHeaders(
+                    {Accept: 'application/json'},
+                    this.headers,
+                    init.body === undefined ? {} : {'Content-Type': 'application/json'},
+                    init.token ? {Authorization: `Bearer ${init.token}`} : {}
+                ),
                 body: init.body === undefined ? undefined : JSON.stringify(init.body),
                 signal: controller.signal
             });
