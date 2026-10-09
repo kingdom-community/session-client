@@ -121,6 +121,26 @@ class TestConstruction(unittest.TestCase):
             client(headers={"X-Api-Key": "k"}).login("alice", "correct-horse")
         self.assertEqual(sent_headers(m).get("X-api-key"), "k")
 
+    def test_no_differently_cased_extra_header_combines_with_the_bearer_token(self):
+        extra = {"authorization": "Basic abc", "content-type": "text/plain"}
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response({"valid": True, "username": "alice"}),
+        ) as m:
+            client(headers=extra).validate_session("sometoken")
+        self.assertEqual(
+            [v for k, v in sent_headers(m).items() if k.lower() == "authorization"],
+            ["Bearer sometoken"],
+        )
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(TOKENS)
+        ) as m:
+            client(headers=extra).login("alice", "correct-horse")
+        self.assertEqual(
+            [v for k, v in sent_headers(m).items() if k.lower() == "content-type"],
+            ["application/json"],
+        )
+
 
 class TestLogin(unittest.TestCase):
     def test_success_returns_the_issued_tokens(self):

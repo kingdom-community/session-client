@@ -179,7 +179,7 @@ export interface LogoutResult {
     revoked: boolean;
     /** The service could not be reached, so the token may still be live server-side. */
     unavailable: boolean;
-    /** Set when the service refused — an already-expired token, typically. */
+    /** Set when the service answered — an already-expired token, typically. */
     status: number | null;
     /** The refusal or unavailability message, when there is one worth showing. */
     message: string | null;
