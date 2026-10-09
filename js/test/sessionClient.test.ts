@@ -110,9 +110,10 @@ describe('construction', () => {
     });
 
     it('lets no differently-cased extra header combine with the bearer token', async () => {
-        const {client, calls} = clientWith([{status: 200, body: {valid: true, username: 'alice'}}], {
-            headers: {authorization: 'Basic abc', 'content-type': 'text/plain'}
-        });
+        const {client, calls} = clientWith(
+            [{status: 200, body: {valid: true, username: 'alice'}}, {status: 200, body: TOKENS}],
+            {headers: {authorization: 'Basic abc', 'content-type': 'text/plain'}}
+        );
         await client.validateSession('sometoken');
         await client.login('alice', 'correct-horse');
         const named = (headers: Record<string, string>, name: string) =>
