@@ -161,6 +161,26 @@ describe('login', () => {
         expect(result).toMatchObject({ok: false, message: 'username is required'});
     });
 
+    it('skips a blank message and trims the one it uses', async () => {
+        const {client} = clientWith([{status: 400, body: {message: '   ', error: '  username is required  '}}]);
+        const result = await client.login('', 'wrong');
+        expect(result).toMatchObject({ok: false, message: 'username is required'});
+    });
+
+    it('searches configured message fields in the order given', async () => {
+        const {client} = clientWith([{status: 401, body: {title: 'second', detail: 'first'}}], {
+            messageFields: ['detail', 'title']
+        });
+        const result = await client.login('alice', 'wrong');
+        expect(result).toMatchObject({ok: false, message: 'first'});
+    });
+
+    it('reads no default key once message fields are configured', async () => {
+        const {client} = clientWith([{status: 401, body: {message: 'not read'}}], {messageFields: ['detail']});
+        const result = await client.login('alice', 'wrong');
+        expect(result).toMatchObject({ok: false, message: 'Those credentials were not accepted.'});
+    });
+
     it('never puts the password in the result', async () => {
         const {client} = clientWith([{status: 401, body: {message: 'bad creds'}}]);
         const result = await client.login('alice', 'hunter2');

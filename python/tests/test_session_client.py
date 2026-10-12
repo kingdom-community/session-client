@@ -179,6 +179,32 @@ class TestLogin(unittest.TestCase):
             result = client().login("", "wrong")
         self.assertEqual(result.message, "username is required")
 
+    def test_skips_a_blank_message_and_trims_the_one_it_uses(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(
+                400, {"message": "   ", "error": "  username is required  "}
+            ),
+        ):
+            result = client().login("", "wrong")
+        self.assertEqual(result.message, "username is required")
+
+    def test_searches_configured_message_fields_in_the_order_given(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(401, {"title": "second", "detail": "first"}),
+        ):
+            result = client(message_fields=["detail", "title"]).login("alice", "wrong")
+        self.assertEqual(result.message, "first")
+
+    def test_reads_no_default_key_once_message_fields_are_configured(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(401, {"message": "not read"}),
+        ):
+            result = client(message_fields=["detail"]).login("alice", "wrong")
+        self.assertEqual(result.message, "Those credentials were not accepted.")
+
     def test_the_password_never_appears_in_the_result(self):
         with mock.patch(
             "urllib.request.urlopen", side_effect=_http_error(401, {"message": "bad creds"})
