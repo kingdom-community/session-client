@@ -100,8 +100,11 @@ export class SessionClient {
         this.fields = {...DEFAULT_FIELDS, ...(options.fields ?? {})};
         this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
         this.probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
-        this.messageFields = options.messageFields ?? DEFAULT_MESSAGE_FIELDS;
-        this.headers = options.headers ?? {};
+        // Copied, like routes and fields above, so a caller who later mutates
+        // the array or record it passed in (or the exported default) does not
+        // change what this client sends or reads.
+        this.messageFields = [...(options.messageFields ?? DEFAULT_MESSAGE_FIELDS)];
+        this.headers = {...(options.headers ?? {})};
         const fetchImpl = options.fetch ?? globalThis.fetch;
         if (typeof fetchImpl !== 'function') {
             throw new Error('No fetch implementation available; pass one as options.fetch');

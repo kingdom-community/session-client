@@ -141,6 +141,22 @@ class TestConstruction(unittest.TestCase):
             ["application/json"],
         )
 
+    def test_copies_the_headers_and_message_fields_it_is_given(self):
+        headers = {"X-Api-Key": "k"}
+        message_fields = ["detail"]
+        configured = client(headers=headers, message_fields=message_fields)
+        headers["X-Api-Key"] = "changed"
+        headers["X-Added"] = "added"
+        message_fields[0] = "title"
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(401, {"detail": "first", "title": "second"}),
+        ) as m:
+            result = configured.login("alice", "wrong")
+        self.assertEqual(sent_headers(m).get("X-api-key"), "k")
+        self.assertIsNone(sent_headers(m).get("X-added"))
+        self.assertEqual(result.message, "first")
+
 
 class TestLogin(unittest.TestCase):
     def test_success_returns_the_issued_tokens(self):

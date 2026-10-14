@@ -123,6 +123,22 @@ describe('construction', () => {
         expect(named(calls[0]!.headers, 'authorization')).toEqual(['Bearer sometoken']);
         expect(named(calls[1]!.headers, 'content-type')).toEqual(['application/json']);
     });
+
+    it('copies the headers and message fields it is given', async () => {
+        const headers: Record<string, string> = {'X-Api-Key': 'k'};
+        const messageFields = ['detail'];
+        const {client, calls} = clientWith(
+            [{status: 401, body: {detail: 'first', title: 'second'}}],
+            {headers, messageFields}
+        );
+        headers['X-Api-Key'] = 'changed';
+        headers['X-Added'] = 'added';
+        messageFields[0] = 'title';
+        const result = await client.login('alice', 'wrong');
+        expect(calls[0]!.headers['X-Api-Key']).toBe('k');
+        expect(calls[0]!.headers['X-Added']).toBeUndefined();
+        expect(result).toMatchObject({ok: false, message: 'first'});
+    });
 });
 
 describe('login', () => {
