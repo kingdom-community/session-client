@@ -202,6 +202,27 @@ describe('login', () => {
         const result = await client.login('alice', 'hunter2');
         expect(JSON.stringify(result)).not.toContain('hunter2');
     });
+
+    it('reads a token issued alone as one with no expiry and no refresh token', async () => {
+        const {client} = clientWith([{status: 200, body: {token: 'abc'}}]);
+        await expect(client.login('alice', 'correct-horse')).resolves.toMatchObject({
+            ok: true,
+            token: 'abc',
+            expiresAt: null,
+            refreshToken: null
+        });
+    });
+
+    it('reads a non-string expiry and a blank refresh token as absent', async () => {
+        const {client} = clientWith([
+            {status: 200, body: {token: 'abc', expiresAt: 1700000000, refreshToken: ''}}
+        ]);
+        await expect(client.login('alice', 'correct-horse')).resolves.toMatchObject({
+            ok: true,
+            expiresAt: null,
+            refreshToken: null
+        });
+    });
 });
 
 describe('register', () => {
@@ -273,6 +294,11 @@ describe('validateSession', () => {
     it('accepts a body that names the account without a `valid` flag', async () => {
         const {client} = clientWith([{status: 200, body: {username: 'alice'}}]);
         await expect(client.validateSession('t')).resolves.toMatchObject({ok: true, username: 'alice'});
+    });
+
+    it('accepts an explicit `valid: true` that names no account and lists no roles', async () => {
+        const {client} = clientWith([{status: 200, body: {valid: true, roles: 'ROLE_USER'}}]);
+        await expect(client.validateSession('t')).resolves.toMatchObject({ok: true, username: null, roles: []});
     });
 
     it('treats an explicit `valid: false` as a refusal', async () => {

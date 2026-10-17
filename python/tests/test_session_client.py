@@ -228,6 +228,24 @@ class TestLogin(unittest.TestCase):
             result = client().login("alice", "hunter2")
         self.assertNotIn("hunter2", repr(result))
 
+    def test_a_token_issued_alone_has_no_expiry_and_no_refresh_token(self):
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response({"token": "abc"})
+        ):
+            result = client().login("alice", "correct-horse")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.token, "abc")
+        self.assertIsNone(result.expires_at)
+        self.assertIsNone(result.refresh_token)
+
+    def test_a_non_string_expiry_and_a_blank_refresh_token_read_as_absent(self):
+        payload = {"token": "abc", "expiresAt": 1700000000, "refreshToken": ""}
+        with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
+            result = client().login("alice", "correct-horse")
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.expires_at)
+        self.assertIsNone(result.refresh_token)
+
 
 class TestRegister(unittest.TestCase):
     def test_success_returns_the_created_account(self):
@@ -311,6 +329,14 @@ class TestValidateSession(unittest.TestCase):
             "urllib.request.urlopen", return_value=_mock_response({"username": "alice"})
         ):
             self.assertTrue(client().validate_session("t").ok)
+
+    def test_an_explicit_valid_true_naming_no_account_and_no_roles_is_accepted(self):
+        payload = {"valid": True, "roles": "ROLE_USER"}
+        with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
+            result = client().validate_session("t")
+        self.assertTrue(result.ok)
+        self.assertIsNone(result.username)
+        self.assertEqual(result.roles, [])
 
     def test_an_explicit_valid_false_is_a_refusal(self):
         with mock.patch(
