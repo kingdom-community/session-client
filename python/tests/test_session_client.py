@@ -82,11 +82,29 @@ class TestConstruction(unittest.TestCase):
         self.assertEqual(sent_url(m), BASE_URL + "/login")
 
     def test_default_routes(self):
+        payload = dict(TOKENS, valid=True, username="alice")
         with mock.patch(
-            "urllib.request.urlopen", return_value=_mock_response(TOKENS)
+            "urllib.request.urlopen", return_value=_mock_response(payload)
         ) as m:
-            client().refresh_session("r1")
-        self.assertEqual(sent_url(m), BASE_URL + "/token/refresh")
+            c = client()
+            c.register("alice", "correct-horse")
+            c.login("alice", "correct-horse")
+            c.validate_session("t")
+            c.logout("t")
+            c.refresh_session("r1")
+        self.assertEqual(
+            [
+                "%s %s" % (call[0][0].get_method(), call[0][0].full_url)
+                for call in m.call_args_list
+            ],
+            [
+                "POST " + BASE_URL + "/register",
+                "POST " + BASE_URL + "/login",
+                "GET " + BASE_URL + "/session/validate",
+                "POST " + BASE_URL + "/logout",
+                "POST " + BASE_URL + "/token/refresh",
+            ],
+        )
 
     def test_routes_are_configuration_not_constants(self):
         with mock.patch(
@@ -171,6 +189,14 @@ class TestLogin(unittest.TestCase):
         self.assertEqual(
             sent_body(m), {"username": "alice", "password": "correct-horse"}
         )
+
+    def test_a_201_is_accepted_as_well_since_services_differ(self):
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(TOKENS, status=201)
+        ):
+            result = client().login("alice", "correct-horse")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.token, TOKENS["token"])
 
     def test_bad_credentials_is_a_refusal_carrying_the_service_message(self):
         with mock.patch(
@@ -380,6 +406,15 @@ class TestRefreshSession(unittest.TestCase):
         self.assertEqual(result.refresh_token, "new-refresh")
         self.assertEqual(sent_body(m), {"refreshToken": "old-refresh"})
 
+    def test_a_201_is_accepted_as_well_since_services_differ(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response({"token": "new-access"}, status=201),
+        ):
+            result = client().refresh_session("old-refresh")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.token, "new-access")
+
     def test_a_spent_refresh_token_is_a_refusal(self):
         with mock.patch(
             "urllib.request.urlopen",
@@ -409,6 +444,16 @@ class TestLogout(unittest.TestCase):
         self.assertFalse(result.revoked)
         self.assertFalse(result.unavailable)
         self.assertEqual(result.status, 401)
+        self.assertEqual(result.message, "token already expired")
+
+    def test_falls_back_to_its_own_wording_when_a_refusal_supplies_no_message(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(403, None, text="<html>Forbidden</html>"),
+        ):
+            result = client().logout("stale")
+        self.assertEqual(result.status, 403)
+        self.assertEqual(result.message, "That token could not be revoked.")
 
 
 class TestIsReachable(unittest.TestCase):
