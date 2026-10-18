@@ -75,12 +75,18 @@ describe('construction', () => {
     });
 
     it('uses the documented default routes', async () => {
-        const {client, calls} = clientWith([{status: 200, body: TOKENS}, {status: 200, body: TOKENS}]);
+        const {client, calls} = clientWith([{status: 200, body: {...TOKENS, valid: true, username: 'alice'}}]);
+        await client.register('alice', 'correct-horse');
         await client.login('alice', 'correct-horse');
+        await client.validateSession('t');
+        await client.logout('t');
         await client.refreshSession('r1');
-        expect(calls.map((call) => call.url)).toEqual([
-            `${BASE_URL}/login`,
-            `${BASE_URL}/token/refresh`
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            `POST ${BASE_URL}/register`,
+            `POST ${BASE_URL}/login`,
+            `GET ${BASE_URL}/session/validate`,
+            `POST ${BASE_URL}/logout`,
+            `POST ${BASE_URL}/token/refresh`
         ]);
     });
 
@@ -152,6 +158,11 @@ describe('login', () => {
             refreshToken: TOKENS.refreshToken
         });
         expect(calls[0]!.body).toEqual({username: 'alice', password: 'correct-horse'});
+    });
+
+    it('accepts a 201 as well, since services differ on which they use', async () => {
+        const {client} = clientWith([{status: 201, body: TOKENS}]);
+        await expect(client.login('alice', 'correct-horse')).resolves.toMatchObject({ok: true, token: TOKENS.token});
     });
 
     it('reports bad credentials as a refusal carrying the service message', async () => {
@@ -337,6 +348,11 @@ describe('refreshSession', () => {
         expect(calls[0]!.body).toEqual({refreshToken: 'old-refresh'});
     });
 
+    it('accepts a 201 as well, since services differ on which they use', async () => {
+        const {client} = clientWith([{status: 201, body: {token: 'new-access'}}]);
+        await expect(client.refreshSession('old-refresh')).resolves.toMatchObject({ok: true, token: 'new-access'});
+    });
+
     it('reports a spent or unknown refresh token as a refusal', async () => {
         const {client} = clientWith([{status: 401, body: {message: 'refresh token not recognised'}}]);
         await expect(client.refreshSession('spent')).resolves.toMatchObject({ok: false, status: 401});
@@ -357,10 +373,19 @@ describe('logout', () => {
 
     it('reports a refusal without throwing', async () => {
         const {client} = clientWith([{status: 401, body: {message: 'token already expired'}}]);
-        await expect(client.logout('stale')).resolves.toMatchObject({
+        await expect(client.logout('stale')).resolves.toEqual({
             revoked: false,
             unavailable: false,
-            status: 401
+            status: 401,
+            message: 'token already expired'
+        });
+    });
+
+    it('falls back to its own wording when a refusal supplies no message', async () => {
+        const {client} = clientWith([{status: 403, text: '<html>Forbidden</html>'}]);
+        await expect(client.logout('stale')).resolves.toMatchObject({
+            status: 403,
+            message: 'That token could not be revoked.'
         });
     });
 });
