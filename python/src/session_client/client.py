@@ -171,6 +171,7 @@ class SessionClient:
             record = _as_mapping(parsed) or {}
             echoed = _non_empty_string(record.get(self.fields.username))
             return RegisterSuccess(username=echoed or username, raw=parsed)
+        self._raise_on_another_success(status)
         # A taken username is not concealed. The service already answers that
         # question to anyone who asks it directly, so hiding it here buys
         # nothing; what matters is that the CALLER's own tables do not become
@@ -193,6 +194,7 @@ class SessionClient:
                     status=status,
                 )
             return tokens
+        self._raise_on_another_success(status)
         return self._refuse_or_raise(status, parsed, "Those credentials were not accepted.")
 
     def validate_session(self, token: str) -> ValidateResult:
@@ -256,6 +258,7 @@ class SessionClient:
                     status=status,
                 )
             return tokens
+        self._raise_on_another_success(status)
         return self._refuse_or_raise(status, parsed, "That session could not be renewed.")
 
     def logout(self, token: str) -> LogoutResult:
@@ -405,6 +408,17 @@ class SessionClient:
             # An error page from a proxy in front of the service is HTML. A
             # body that cannot be read is not an answer.
             return None
+
+    # Any other 2xx is not "no" either. The service did not refuse -- it
+    # answered with a status this method does not read as success (a 204 or a
+    # 202, say), so nothing is known. Not used by validate, which already
+    # fails closed by treating every non-200 as not a session.
+    @staticmethod
+    def _raise_on_another_success(status: int) -> None:
+        if 200 <= status < 300:
+            raise ServiceUnavailableError(
+                "the identity service answered HTTP %d" % status, status=status
+            )
 
     # A 5xx is "we do not know", not "no". Treating it as a refusal would tell
     # a user their password is wrong during an outage.

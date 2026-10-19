@@ -135,6 +135,7 @@ export class SessionClient {
             const echoed = nonEmptyString(asRecord(response.body)?.[this.fields.username]);
             return {ok: true, username: echoed ?? username, raw: response.body};
         }
+        this.throwOnAnotherSuccess(response.status);
         // A taken username is not concealed. The service already answers that
         // question to anyone who asks it directly, so hiding it here buys
         // nothing; what matters is that the CALLER's own tables do not become
@@ -161,6 +162,7 @@ export class SessionClient {
             }
             return {ok: true, ...tokens, raw: response.body};
         }
+        this.throwOnAnotherSuccess(response.status);
         return this.refuseOrThrow(response, 'Those credentials were not accepted.');
     }
 
@@ -232,6 +234,7 @@ export class SessionClient {
             }
             return {ok: true, ...tokens, raw: response.body};
         }
+        this.throwOnAnotherSuccess(response.status);
         return this.refuseOrThrow(response, 'That session could not be renewed.');
     }
 
@@ -346,6 +349,16 @@ export class SessionClient {
             );
         } finally {
             clearTimeout(timer);
+        }
+    }
+
+    // Any other 2xx is not "no" either. The service did not refuse — it
+    // answered with a status this method does not read as success (a 204 or
+    // a 202, say), so nothing is known. Not used by validate, which already
+    // fails closed by treating every non-200 as not a session.
+    private throwOnAnotherSuccess(status: number): void {
+        if (status >= 200 && status < 300) {
+            throw new ServiceUnavailableError(`the identity service answered HTTP ${status}`, status);
         }
     }
 

@@ -566,6 +566,40 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             with self.assertRaises(ServiceUnavailableError):
                 client().register("alice", "Str0ng-Pass!")
 
+    # Only 200 and 201 are read as success. Any other 2xx is not a refusal
+    # either -- the service did not say no -- so nothing is known.
+    def test_unavailable_another_2xx_on_login_is_not_credentials_not_accepted(self):
+        for status in (202, 204):
+            with self.subTest(status=status):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response(None, status=status, text=""),
+                ):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().login("alice", "correct-horse")
+                self.assertEqual(ctx.exception.status, status)
+                self.assertEqual(
+                    str(ctx.exception), "the identity service answered HTTP %d" % status
+                )
+
+    def test_unavailable_another_2xx_on_register_does_not_become_that_name_is_taken(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response(None, status=204, text=""),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().register("alice", "Str0ng-Pass!")
+        self.assertEqual(ctx.exception.status, 204)
+
+    def test_unavailable_another_2xx_on_refresh_does_not_become_could_not_be_renewed(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response({"message": "queued"}, status=202),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().refresh_session("the-refresh-token")
+        self.assertEqual(ctx.exception.status, 202)
+
     def test_unavailable_a_5xx_on_validate_does_not_sign_anybody_out(self):
         with mock.patch("urllib.request.urlopen", side_effect=_http_error(503, {})):
             with self.assertRaises(ServiceUnavailableError):

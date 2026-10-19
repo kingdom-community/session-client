@@ -103,7 +103,9 @@ service to answer with something like:
 | `5xx` | Not an answer. Surfaces as UNAVAILABLE, not as a refusal. |
 
 Those are conventions, not requirements: the client passes through whatever
-status the service sends and only ever treats `>= 500` specially.
+status the service sends and only ever treats `>= 500` specially — plus, on
+register, login and refresh, a 2xx other than `200` or `201` (a `202` or `204`,
+say), which is not a refusal either and so surfaces as UNAVAILABLE.
 
 ## Configuration
 
