@@ -486,6 +486,32 @@ describe('the three outcomes are kept apart', () => {
         );
     });
 
+    // Only 200 and 201 are read as success. Any other 2xx is not a refusal
+    // either — the service did not say no — so nothing is known.
+    it('UNAVAILABLE: another 2xx on login is not "those credentials were not accepted"', async () => {
+        for (const status of [202, 204]) {
+            const {client} = clientWith([{status, text: ''}]);
+            const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(status);
+            expect((error as Error).message).toBe(`the identity service answered HTTP ${status}`);
+        }
+    });
+
+    it('UNAVAILABLE: another 2xx on register does not become "that name is taken"', async () => {
+        const {client} = clientWith([{status: 204, text: ''}]);
+        const error = await client.register('alice', 'Str0ng-Pass!').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(204);
+    });
+
+    it('UNAVAILABLE: another 2xx on refresh does not become "that session could not be renewed"', async () => {
+        const {client} = clientWith([{status: 202, body: {message: 'queued'}}]);
+        const error = await client.refreshSession('the-refresh-token').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(202);
+    });
+
     it('UNAVAILABLE: a 5xx on validate does not sign anybody out', async () => {
         const {client} = clientWith([{status: 503, body: {}}]);
         await expect(client.validateSession('t')).rejects.toBeInstanceOf(ServiceUnavailableError);
