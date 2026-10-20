@@ -159,6 +159,29 @@ class TestConstruction(unittest.TestCase):
             ["application/json"],
         )
 
+    def test_asks_for_json_every_time_and_labels_only_a_request_with_a_body(self):
+        payload = dict(TOKENS, valid=True, username="alice")
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(payload)
+        ) as m:
+            c = client()
+            c.login("alice", "correct-horse")
+            c.validate_session("t")
+            c.logout("t")
+        requests = [call[0][0] for call in m.call_args_list]
+        self.assertEqual(
+            [r.headers.get("Accept") for r in requests],
+            ["application/json", "application/json", "application/json"],
+        )
+        self.assertEqual(
+            [r.headers.get("Content-type") for r in requests],
+            ["application/json", None, None],
+        )
+        self.assertEqual(
+            [json.loads(r.data) if r.data is not None else None for r in requests],
+            [{"username": "alice", "password": "correct-horse"}, None, None],
+        )
+
     def test_copies_the_headers_and_message_fields_it_is_given(self):
         headers = {"X-Api-Key": "k"}
         message_fields = ["detail"]
@@ -226,6 +249,16 @@ class TestLogin(unittest.TestCase):
             "urllib.request.urlopen",
             side_effect=_http_error(
                 400, {"message": "   ", "error": "  username is required  "}
+            ),
+        ):
+            result = client().login("", "wrong")
+        self.assertEqual(result.message, "username is required")
+
+    def test_skips_a_message_field_that_is_not_a_string(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(
+                400, {"message": {"code": 7}, "error": "username is required"}
             ),
         ):
             result = client().login("", "wrong")
@@ -462,6 +495,18 @@ class TestIsReachable(unittest.TestCase):
             "urllib.request.urlopen", side_effect=_http_error(401, {"message": "no token"})
         ):
             self.assertTrue(client().is_reachable())
+
+    def test_asks_the_configured_validate_route_carrying_no_credential(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(401, {"message": "no token"})
+        ) as m:
+            client(routes={"validate": "/api/v2/whoami"}).is_reachable()
+        self.assertEqual(m.call_count, 1)
+        request = m.call_args[0][0]
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(sent_url(m), BASE_URL + "/api/v2/whoami")
+        self.assertIsNone(sent_headers(m).get("Authorization"))
+        self.assertIsNone(request.data)
 
     def test_false_when_the_connection_fails(self):
         with mock.patch(

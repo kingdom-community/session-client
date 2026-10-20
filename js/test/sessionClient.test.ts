@@ -130,6 +130,20 @@ describe('construction', () => {
         expect(named(calls[1]!.headers, 'content-type')).toEqual(['application/json']);
     });
 
+    it('asks for JSON every time, and labels only a request with a body as JSON', async () => {
+        const {client, calls} = clientWith([{status: 200, body: {...TOKENS, valid: true, username: 'alice'}}]);
+        await client.login('alice', 'correct-horse');
+        await client.validateSession('t');
+        await client.logout('t');
+        expect(calls.map((call) => call.headers['Accept'])).toEqual([
+            'application/json',
+            'application/json',
+            'application/json'
+        ]);
+        expect(calls.map((call) => call.headers['Content-Type'])).toEqual(['application/json', undefined, undefined]);
+        expect(calls.map((call) => call.body)).toEqual([{username: 'alice', password: 'correct-horse'}, null, null]);
+    });
+
     it('copies the headers and message fields it is given', async () => {
         const headers: Record<string, string> = {'X-Api-Key': 'k'};
         const messageFields = ['detail'];
@@ -190,6 +204,12 @@ describe('login', () => {
 
     it('skips a blank message and trims the one it uses', async () => {
         const {client} = clientWith([{status: 400, body: {message: '   ', error: '  username is required  '}}]);
+        const result = await client.login('', 'wrong');
+        expect(result).toMatchObject({ok: false, message: 'username is required'});
+    });
+
+    it('skips a message field that is not a string', async () => {
+        const {client} = clientWith([{status: 400, body: {message: {code: 7}, error: 'username is required'}}]);
         const result = await client.login('', 'wrong');
         expect(result).toMatchObject({ok: false, message: 'username is required'});
     });
@@ -394,6 +414,18 @@ describe('isReachable', () => {
     it('is true when the service answers at all, including with a 401', async () => {
         const {client} = clientWith([{status: 401, body: {message: 'no token'}}]);
         await expect(client.isReachable()).resolves.toBe(true);
+    });
+
+    it('asks the configured validate route, carrying no credential', async () => {
+        const {client, calls} = clientWith([{status: 401, body: {message: 'no token'}}], {
+            routes: {validate: '/api/v2/whoami'}
+        });
+        await client.isReachable();
+        expect(calls).toHaveLength(1);
+        expect(calls[0]!.method).toBe('GET');
+        expect(calls[0]!.url).toBe(`${BASE_URL}/api/v2/whoami`);
+        expect(calls[0]!.headers['Authorization']).toBeUndefined();
+        expect(calls[0]!.body).toBeNull();
     });
 
     it('is false when the connection fails', async () => {
