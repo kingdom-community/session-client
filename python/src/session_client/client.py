@@ -63,6 +63,14 @@ def _as_mapping(value: Any) -> Optional[Dict[str, Any]]:
     return value if isinstance(value, dict) else None
 
 
+def _is_not_an_answer(status: int) -> bool:
+    """A redirect or a server error: answered, but not with a yes or a no.
+
+    Any other 2xx is handled separately, because validate reads it as no.
+    """
+    return 300 <= status < 400 or status >= 500
+
+
 def _non_empty_string(value: Any) -> Optional[str]:
     return value if isinstance(value, str) and value.strip() != "" else None
 
@@ -282,7 +290,7 @@ class SessionClient:
             )
         if 200 <= status < 300:
             return LogoutResult(revoked=True, unavailable=False, status=status, message=None)
-        if status >= 500:
+        if _is_not_an_answer(status):
             return LogoutResult(
                 revoked=False,
                 unavailable=True,
@@ -421,9 +429,11 @@ class SessionClient:
             )
 
     # A 5xx is "we do not know", not "no". Treating it as a refusal would tell
-    # a user their password is wrong during an outage.
+    # a user their password is wrong during an outage. A 3xx that reaches here
+    # is the same: urllib declines to follow a 307 or 308 on a POST, and a
+    # redirect says nothing about the credentials, so it is not a refusal.
     def _refuse_or_raise(self, status: int, parsed: Any, fallback: str) -> Refusal:
-        if status >= 500:
+        if _is_not_an_answer(status):
             raise ServiceUnavailableError(
                 "the identity service answered HTTP %d" % status, status=status
             )

@@ -544,6 +544,50 @@ describe('the three outcomes are kept apart', () => {
         expect((error as ServiceUnavailableError).status).toBe(202);
     });
 
+    // A redirect the transport did not follow — `fetch` leaves a 300 or a
+    // Location-less 3xx alone, and urllib will not re-send a POST for a 307 —
+    // is not "no" either. The service said nothing about the credentials.
+    it('UNAVAILABLE: a 3xx on login is not "those credentials were not accepted"', async () => {
+        for (const status of [300, 307, 308]) {
+            const {client} = clientWith([{status, body: {message: 'moved'}}]);
+            const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(status);
+            expect((error as Error).message).toBe(`the identity service answered HTTP ${status}`);
+        }
+    });
+
+    it('UNAVAILABLE: a 3xx on register does not become "that name is taken"', async () => {
+        const {client} = clientWith([{status: 307, text: ''}]);
+        const error = await client.register('alice', 'Str0ng-Pass!').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(307);
+    });
+
+    it('UNAVAILABLE: a 3xx on refresh does not become "that session could not be renewed"', async () => {
+        const {client} = clientWith([{status: 308, text: ''}]);
+        const error = await client.refreshSession('the-refresh-token').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(308);
+    });
+
+    it('UNAVAILABLE: a 3xx on validate does not sign anybody out', async () => {
+        const {client} = clientWith([{status: 302, text: ''}]);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(302);
+    });
+
+    it('logout reports a 3xx as unavailable rather than throwing or refusing', async () => {
+        const {client} = clientWith([{status: 307, body: {message: 'moved'}}]);
+        await expect(client.logout('sometoken')).resolves.toEqual({
+            revoked: false,
+            unavailable: true,
+            status: 307,
+            message: 'the identity service could not confirm the sign-out'
+        });
+    });
+
     it('UNAVAILABLE: a 5xx on validate does not sign anybody out', async () => {
         const {client} = clientWith([{status: 503, body: {}}]);
         await expect(client.validateSession('t')).rejects.toBeInstanceOf(ServiceUnavailableError);

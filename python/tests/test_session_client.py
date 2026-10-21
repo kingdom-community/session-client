@@ -645,6 +645,60 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
                 client().refresh_session("the-refresh-token")
         self.assertEqual(ctx.exception.status, 202)
 
+    # A redirect the transport did not follow -- urllib will not re-send a POST
+    # for a 307 or 308, and raises HTTPError instead -- is not "no" either.
+    # The service said nothing about the credentials.
+    def test_unavailable_a_3xx_on_login_is_not_credentials_not_accepted(self):
+        for status in (300, 307, 308):
+            with self.subTest(status=status):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    side_effect=_http_error(status, {"message": "moved"}),
+                ):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().login("alice", "correct-horse")
+                self.assertEqual(ctx.exception.status, status)
+                self.assertEqual(
+                    str(ctx.exception), "the identity service answered HTTP %d" % status
+                )
+
+    def test_unavailable_a_3xx_on_register_does_not_become_that_name_is_taken(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(307, None, text="")
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().register("alice", "Str0ng-Pass!")
+        self.assertEqual(ctx.exception.status, 307)
+
+    def test_unavailable_a_3xx_on_refresh_does_not_become_could_not_be_renewed(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(308, None, text="")
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().refresh_session("the-refresh-token")
+        self.assertEqual(ctx.exception.status, 308)
+
+    def test_unavailable_a_3xx_on_validate_does_not_sign_anybody_out(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(302, None, text="")
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 302)
+
+    def test_logout_reports_a_3xx_as_unavailable_rather_than_raising_or_refusing(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(307, {"message": "moved"}),
+        ):
+            result = client().logout("sometoken")
+        self.assertFalse(result.revoked)
+        self.assertTrue(result.unavailable)
+        self.assertEqual(result.status, 307)
+        self.assertEqual(
+            result.message, "the identity service could not confirm the sign-out"
+        )
+
     def test_unavailable_a_5xx_on_validate_does_not_sign_anybody_out(self):
         with mock.patch("urllib.request.urlopen", side_effect=_http_error(503, {})):
             with self.assertRaises(ServiceUnavailableError):

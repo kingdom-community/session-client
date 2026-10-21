@@ -100,12 +100,14 @@ service to answer with something like:
 | `401` | Credentials not accepted, or a token that is expired, revoked or unknown. |
 | `409` | Username or email already taken. |
 | `429` | Rate limited. |
+| `3xx` | A redirect the transport did not follow. Not an answer: surfaces as UNAVAILABLE. |
 | `5xx` | Not an answer. Surfaces as UNAVAILABLE, not as a refusal. |
 
 Those are conventions, not requirements: the client passes through whatever
-status the service sends and only ever treats `>= 500` specially — plus, on
-register, login and refresh, a 2xx other than `200` or `201` (a `202` or `204`,
-say), which is not a refusal either and so surfaces as UNAVAILABLE.
+status the service sends and only ever treats `3xx` and `>= 500` specially —
+plus, on register, login and refresh, a 2xx other than `200` or `201` (a `202`
+or `204`, say), which is not a refusal either and so surfaces as UNAVAILABLE.
+Logout reports a `3xx` or `5xx` as `unavailable` rather than throwing.
 
 ## Configuration
 

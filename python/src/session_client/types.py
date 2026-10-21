@@ -104,7 +104,7 @@ class Refusal:
 
     ok: ClassVar[bool] = False
 
-    #: The HTTP status the service answered with. Always < 500.
+    #: The HTTP status the service answered with. Always < 500, never a 3xx.
     status: int
     #: Safe to show a person. The service's own wording where it gave one.
     message: str

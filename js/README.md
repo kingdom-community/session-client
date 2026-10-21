@@ -93,7 +93,8 @@ type LoginResult =
     | {ok: false; status: number; message: string; raw: unknown};
 ```
 
-`Refusal.status` is always below 500 — a 5xx is UNAVAILABLE, not a refusal.
+`Refusal.status` is always below 500 and never a 3xx — a 5xx, or a redirect
+that was not followed, is UNAVAILABLE, not a refusal.
 
 `LogoutResult` is `{revoked, unavailable, status, message}` and never a thrown
 error, so a caller cannot forget to clear its local session during an outage.

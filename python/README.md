@@ -88,7 +88,8 @@ LoginSuccess(ok=True,  token=..., expires_at=..., refresh_token=..., raw=...)
 Refusal(     ok=False, status=..., message=..., raw=...)
 ```
 
-`Refusal.status` is always below 500 — a 5xx is UNAVAILABLE, not a refusal.
+`Refusal.status` is always below 500 and never a 3xx — a 5xx, or a redirect
+that was not followed, is UNAVAILABLE, not a refusal.
 
 `LogoutResult(revoked, unavailable, status, message)` is returned, never raised,
 so a caller cannot forget to clear its local session during an outage.
