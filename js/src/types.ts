@@ -130,7 +130,7 @@ export const DEFAULT_MESSAGE_FIELDS = ['message', 'error'];
  */
 export interface Refusal {
     ok: false;
-    /** The HTTP status the service answered with. Always < 500. */
+    /** The HTTP status the service answered with. Always < 500, never a 3xx. */
     status: number;
     /** Safe to show a person. The service's own wording where it gave one. */
     message: string;

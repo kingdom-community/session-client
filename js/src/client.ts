@@ -54,6 +54,11 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
         ? (value as Record<string, unknown>)
         : null;
 
+// A redirect or a server error: the service answered, but not with a yes or a
+// no. Any other 2xx is handled separately, because validate reads it as no.
+const isNotAnAnswer = (status: number): boolean =>
+    (status >= 300 && status < 400) || status >= 500;
+
 const nonEmptyString = (value: unknown): string | null =>
     typeof value === 'string' && value.trim() !== '' ? value : null;
 
@@ -254,7 +259,7 @@ export class SessionClient {
             if (response.status >= 200 && response.status < 300) {
                 return {revoked: true, unavailable: false, status: response.status, message: null};
             }
-            if (response.status >= 500) {
+            if (isNotAnAnswer(response.status)) {
                 return {
                     revoked: false,
                     unavailable: true,
@@ -363,9 +368,11 @@ export class SessionClient {
     }
 
     // A 5xx is "we do not know", not "no". Treating it as a refusal would tell
-    // a user their password is wrong during an outage.
+    // a user their password is wrong during an outage. A 3xx that reaches
+    // here is the same: a redirect the transport did not follow says nothing
+    // about the credentials, so it is not a refusal either.
     private refuseOrThrow(response: RawResponse, fallback: string): Refusal {
-        if (response.status >= 500) {
+        if (isNotAnAnswer(response.status)) {
             throw new ServiceUnavailableError(
                 `the identity service answered HTTP ${response.status}`,
                 response.status
