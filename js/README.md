@@ -100,7 +100,8 @@ that was not followed, is UNAVAILABLE, not a refusal.
 error, so a caller cannot forget to clear its local session during an outage.
 
 `validateSession` returns `{ok: true, username, roles, raw}`. It **fails
-closed**: a 200 whose body says nothing about a session is UNAVAILABLE, and an
+closed**: a 200 whose body says nothing about a session, or whose `valid` is
+neither `true` nor `false` (a `null` reads as absent), is UNAVAILABLE, and an
 explicit `valid: false` is a refusal whose `status` is the 200 the service
 actually sent — branch on `ok`, not on `status`.
 

@@ -604,6 +604,25 @@ describe('the three outcomes are kept apart', () => {
         expect((error as Error).message).toBe('the identity service answered 200 without a session');
     });
 
+    // A `valid` that is neither true nor false is not an answer, and a name
+    // beside it must not make it one — "false" and 0 may well mean no.
+    it('UNAVAILABLE: a non-boolean `valid` beside a name is not a valid session', async () => {
+        for (const valid of ['false', 0, 'true', 1]) {
+            const {client} = clientWith([{status: 200, body: {valid, username: 'alice'}}]);
+            const error = await client.validateSession('t').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(200);
+            expect((error as Error).message).toBe('the identity service answered 200 without a session');
+        }
+    });
+
+    it('reads a null `valid` as absent, so a name beside it is still a session', async () => {
+        const {client} = clientWith([{status: 200, body: {valid: null, username: 'alice'}}]);
+        const result = await client.validateSession('t');
+        expect(result.ok).toBe(true);
+        expect(result.ok && result.username).toBe('alice');
+    });
+
     it('UNAVAILABLE: a 200 with no token is not a renewed session', async () => {
         const {client} = clientWith([{status: 200, body: {tokenType: 'Bearer'}}]);
         const error = await client.refreshSession('the-refresh-token').catch((caught: unknown) => caught);

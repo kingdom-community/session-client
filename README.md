@@ -67,8 +67,8 @@ Three consequences of that model, all deliberate:
   method that throws is a method somebody forgets to wrap.
 
 Session validation **fails closed** for the same reason, from the other
-direction: a 200 whose body says nothing about a session is UNAVAILABLE, never
-a valid session. Not knowing whether somebody is signed in must never be
+direction: a 200 whose body says nothing about a session — or whose `valid`
+field is neither `true` nor `false` — is UNAVAILABLE, never a valid session. Not knowing whether somebody is signed in must never be
 mistaken for knowing that they are.
 
 ## Credentials

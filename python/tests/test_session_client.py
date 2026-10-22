@@ -718,6 +718,32 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             str(ctx.exception), "the identity service answered 200 without a session"
         )
 
+    # A ``valid`` that is neither true nor false is not an answer, and a name
+    # beside it must not make it one -- "false" and 0 may well mean no.
+    def test_unavailable_a_non_boolean_valid_beside_a_name_is_not_a_valid_session(self):
+        for valid in ("false", 0, "true", 1):
+            with self.subTest(valid=valid):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response({"valid": valid, "username": "alice"}),
+                ):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().validate_session("t")
+                self.assertEqual(ctx.exception.status, 200)
+                self.assertEqual(
+                    str(ctx.exception),
+                    "the identity service answered 200 without a session",
+                )
+
+    def test_a_null_valid_reads_as_absent_so_a_name_beside_it_is_a_session(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response({"valid": None, "username": "alice"}),
+        ):
+            result = client().validate_session("t")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.username, "alice")
+
     def test_unavailable_a_200_without_a_token_is_not_a_renewed_session(self):
         with mock.patch(
             "urllib.request.urlopen", return_value=_mock_response({"tokenType": "Bearer"})
