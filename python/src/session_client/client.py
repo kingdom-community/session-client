@@ -231,6 +231,13 @@ class SessionClient:
         valid = record.get(self.fields.valid)
         if valid is False:
             return Refusal(status=200, message="That session is not valid.", raw=parsed)
+        if valid is not None and not isinstance(valid, bool):
+            # A ``valid`` of "false" or 0 is not an answer this client reads --
+            # and quite possibly the service saying no -- so a name beside it
+            # must not turn it into a yes. A null is read as absent.
+            raise ServiceUnavailableError(
+                "the identity service answered 200 without a session", status=200
+            )
         username = _non_empty_string(record.get(self.fields.username))
         if valid is not True and username is None:
             # Neither an explicit `valid` nor a name: nothing here says this is

@@ -200,6 +200,12 @@ export class SessionClient {
         if (valid === false) {
             return {ok: false, status: 200, message: 'That session is not valid.', raw: response.body};
         }
+        if (valid !== undefined && valid !== null && typeof valid !== 'boolean') {
+            // A `valid` of "false" or 0 is not an answer this client reads —
+            // and quite possibly the service saying no — so a name beside it
+            // must not turn it into a yes. A null is read as absent.
+            throw new ServiceUnavailableError('the identity service answered 200 without a session', 200);
+        }
         const username = nonEmptyString(record[this.fields.username]);
         if (valid !== true && username === null) {
             // Neither an explicit `valid` nor a name: nothing here says this is

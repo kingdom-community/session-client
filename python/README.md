@@ -95,7 +95,8 @@ that was not followed, is UNAVAILABLE, not a refusal.
 so a caller cannot forget to clear its local session during an outage.
 
 `validate_session` returns `ValidateSuccess(username, roles, raw)`. It **fails
-closed**: a 200 whose body says nothing about a session raises
+closed**: a 200 whose body says nothing about a session, or whose `valid` is
+neither `true` nor `false` (a `null` reads as absent), raises
 `ServiceUnavailableError`, and an explicit `valid: false` is a `Refusal` whose
 `status` is the 200 the service actually sent — branch on `ok`, not on `status`.
 
