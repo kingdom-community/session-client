@@ -107,7 +107,8 @@ Those are conventions, not requirements: the client passes through whatever
 status the service sends and only ever treats `3xx` and `>= 500` specially —
 plus, on register, login and refresh, a 2xx other than `200` or `201` (a `202`
 or `204`, say), which is not a refusal either and so surfaces as UNAVAILABLE.
-Logout reports a `3xx` or `5xx` as `unavailable` rather than throwing.
+Validate fails closed instead: it reads any status other than `200` that is
+not a `3xx` or `>= 500` as a refusal — not a session. Logout reports a `3xx` or `5xx` as `unavailable` rather than throwing.
 
 ## Configuration
 
