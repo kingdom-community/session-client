@@ -704,6 +704,22 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             with self.assertRaises(ServiceUnavailableError):
                 client().validate_session("t")
 
+    # Validate fails closed on every status but 200, so another 2xx is read as
+    # no -- even with a body that would be a session on a 200 -- rather than as
+    # the UNAVAILABLE the other calls report for it.
+    def test_validate_reads_another_2xx_as_not_a_session_even_beside_a_valid_body(self):
+        body = {"valid": True, "username": "alice"}
+        for status in (201, 202, 204):
+            with self.subTest(status=status):
+                with mock.patch(
+                    "urllib.request.urlopen", return_value=_mock_response(body, status)
+                ):
+                    result = client().validate_session("t")
+                self.assertEqual(
+                    result,
+                    Refusal(status=status, message="That session is not valid.", raw=body),
+                )
+
     # Valid JSON is not the same as an answer: an object with neither a
     # ``valid`` flag nor a name says nothing about a session, so validate fails
     # closed on it exactly as on a body that will not parse.

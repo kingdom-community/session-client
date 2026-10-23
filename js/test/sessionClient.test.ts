@@ -593,6 +593,21 @@ describe('the three outcomes are kept apart', () => {
         await expect(client.validateSession('t')).rejects.toBeInstanceOf(ServiceUnavailableError);
     });
 
+    // Validate fails closed on every status but 200, so another 2xx is read
+    // as no — even with a body that would be a session on a 200 — rather than
+    // as the UNAVAILABLE the other calls report for it.
+    it('validate reads another 2xx as not a session, even beside a valid body', async () => {
+        for (const status of [201, 202, 204]) {
+            const {client} = clientWith([{status, body: {valid: true, username: 'alice'}}]);
+            await expect(client.validateSession('t')).resolves.toEqual({
+                ok: false,
+                status,
+                message: 'That session is not valid.',
+                raw: {valid: true, username: 'alice'}
+            });
+        }
+    });
+
     // Valid JSON is not the same as an answer: an object with neither a
     // `valid` flag nor a name says nothing about a session, so validate fails
     // closed on it exactly as on a body that will not parse.
