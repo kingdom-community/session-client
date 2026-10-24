@@ -107,6 +107,33 @@ describe('construction', () => {
         expect(result).toMatchObject({ok: true, token: 'abc', expiresAt: 'later', refreshToken: 'r2'});
     });
 
+    it('reads a validate response through the field map, and not through the default names', async () => {
+        const {client} = clientWith(
+            [{
+                status: 200,
+                body: {active: true, sub: 'alice', scopes: ['read'], username: 'mallory', roles: ['ROLE_ADMIN']}
+            }],
+            {fields: {valid: 'active', username: 'sub', roles: 'scopes'}}
+        );
+        await expect(client.validateSession('t')).resolves.toMatchObject({ok: true, username: 'alice', roles: ['read']});
+    });
+
+    it('refuses on a remapped `valid` of false, whatever the default name says', async () => {
+        const {client} = clientWith(
+            [{status: 200, body: {active: false, valid: true, sub: 'alice'}}],
+            {fields: {valid: 'active', username: 'sub'}}
+        );
+        await expect(client.validateSession('t')).resolves.toMatchObject({ok: false, status: 200});
+    });
+
+    it('prefers the echoed name under its remapped field on register', async () => {
+        const {client} = clientWith(
+            [{status: 201, body: {login: 'alice', username: 'mallory'}}],
+            {fields: {username: 'login'}}
+        );
+        await expect(client.register('  Alice  ', 'Str0ng-Pass!')).resolves.toMatchObject({ok: true, username: 'alice'});
+    });
+
     it('sends any configured extra headers', async () => {
         const {client, calls} = clientWith([{status: 200, body: TOKENS}], {
             headers: {'X-Api-Key': 'k'}

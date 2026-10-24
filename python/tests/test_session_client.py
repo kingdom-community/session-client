@@ -132,6 +132,42 @@ class TestConstruction(unittest.TestCase):
         self.assertEqual(result.expires_at, "later")
         self.assertEqual(result.refresh_token, "r2")
 
+    def test_a_validate_response_is_read_through_the_field_map_not_the_defaults(self):
+        payload = {
+            "active": True,
+            "sub": "alice",
+            "scopes": ["read"],
+            "username": "mallory",
+            "roles": ["ROLE_ADMIN"],
+        }
+        with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
+            result = client(
+                fields={"valid": "active", "username": "sub", "roles": "scopes"}
+            ).validate_session("t")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.username, "alice")
+        self.assertEqual(result.roles, ["read"])
+
+    def test_a_remapped_valid_of_false_refuses_whatever_the_default_name_says(self):
+        payload = {"active": False, "valid": True, "sub": "alice"}
+        with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
+            result = client(
+                fields={"valid": "active", "username": "sub"}
+            ).validate_session("t")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status, 200)
+
+    def test_register_prefers_the_echoed_name_under_its_remapped_field(self):
+        payload = {"login": "alice", "username": "mallory"}
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(payload, status=201)
+        ):
+            result = client(fields={"username": "login"}).register(
+                "  Alice  ", "Str0ng-Pass!"
+            )
+        self.assertTrue(result.ok)
+        self.assertEqual(result.username, "alice")
+
     def test_extra_headers_are_sent(self):
         with mock.patch(
             "urllib.request.urlopen", return_value=_mock_response(TOKENS)
