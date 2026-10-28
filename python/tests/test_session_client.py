@@ -19,6 +19,7 @@ from unittest import mock
 
 from session_client import (
     Refusal,
+    RegisterSuccess,
     ServiceUnavailableError,
     SessionClient,
 )
@@ -366,6 +367,16 @@ class TestRegister(unittest.TestCase):
         ):
             result = client().register("  Alice  ", "Str0ng-Pass!")
         self.assertEqual(result.username, "alice")
+
+    def test_keeps_the_typed_name_when_the_echoed_one_is_unusable(self):
+        for body in ({"username": "   "}, {"username": 42}, {"username": None}, ["bob"]):
+            with self.subTest(body=body):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response(body, status=201),
+                ):
+                    result = client().register("alice", "Str0ng-Pass!")
+                self.assertEqual(result, RegisterSuccess(username="alice", raw=body))
 
     def test_email_is_sent_only_when_given(self):
         with mock.patch("urllib.request.urlopen", return_value=_mock_response({})) as m:
@@ -795,6 +806,58 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             result = client().validate_session("t")
         self.assertTrue(result.ok)
         self.assertEqual(result.username, "alice")
+
+    # A blank or non-string name is no name, so without a ``valid`` flag beside
+    # it nothing says this is a session.
+    def test_unavailable_a_blank_or_non_string_name_alone_is_not_a_valid_session(self):
+        for username in ("", "   ", 7):
+            with self.subTest(username=username):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response({"username": username}),
+                ):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().validate_session("t")
+                self.assertEqual(ctx.exception.status, 200)
+                self.assertEqual(
+                    str(ctx.exception),
+                    "the identity service answered 200 without a session",
+                )
+
+    # An array parses, but it is not a record: the session it wraps is not
+    # read out of it.
+    def test_unavailable_a_json_array_is_not_a_valid_session_even_wrapping_one(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response([{"valid": True, "username": "alice"}]),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception), "the identity service answered 200 without a session"
+        )
+
+    def test_unavailable_a_blank_non_string_or_wrapped_token_is_not_a_login(self):
+        bodies = (
+            {"token": ""},
+            {"token": 123},
+            {"token": None},
+            {"token": ["t"]},
+            [TOKENS],
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                with mock.patch(
+                    "urllib.request.urlopen", return_value=_mock_response(body)
+                ):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().login("alice", "correct-horse")
+                self.assertEqual(ctx.exception.status, 200)
+                self.assertEqual(
+                    str(ctx.exception),
+                    "the identity service answered HTTP 200 without a token",
+                )
 
     def test_unavailable_a_200_without_a_token_is_not_a_renewed_session(self):
         with mock.patch(
