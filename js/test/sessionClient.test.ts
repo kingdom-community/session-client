@@ -302,6 +302,17 @@ describe('register', () => {
         expect(result).toMatchObject({ok: true, username: 'alice'});
     });
 
+    it('keeps the typed name when the echoed one is blank, not a string, or not in an object', async () => {
+        for (const body of [{username: '   '}, {username: 42}, {username: null}, ['bob']]) {
+            const {client} = clientWith([{status: 201, body}]);
+            await expect(client.register('alice', 'Str0ng-Pass!')).resolves.toEqual({
+                ok: true,
+                username: 'alice',
+                raw: body
+            });
+        }
+    });
+
     it('sends an email only when one was given', async () => {
         const {client, calls} = clientWith([{status: 201, body: {}}, {status: 201, body: {}}]);
         await client.register('alice', 'Str0ng-Pass!');
@@ -663,6 +674,38 @@ describe('the three outcomes are kept apart', () => {
         const result = await client.validateSession('t');
         expect(result.ok).toBe(true);
         expect(result.ok && result.username).toBe('alice');
+    });
+
+    // A blank or non-string name is no name, so without a `valid` flag beside
+    // it nothing says this is a session.
+    it('UNAVAILABLE: a blank or non-string name alone is not a valid session', async () => {
+        for (const username of ['', '   ', 7]) {
+            const {client} = clientWith([{status: 200, body: {username}}]);
+            const error = await client.validateSession('t').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(200);
+            expect((error as Error).message).toBe('the identity service answered 200 without a session');
+        }
+    });
+
+    // An array parses, and is an object to `typeof`, but it is not a record:
+    // the session it wraps is not read out of it.
+    it('UNAVAILABLE: a JSON array is not a valid session, even wrapping one', async () => {
+        const {client} = clientWith([{status: 200, body: [{valid: true, username: 'alice'}]}]);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered 200 without a session');
+    });
+
+    it('UNAVAILABLE: a blank or non-string token, or one wrapped in an array, is not a login', async () => {
+        for (const body of [{token: ''}, {token: 123}, {token: null}, {token: ['t']}, [TOKENS]]) {
+            const {client} = clientWith([{status: 200, body}]);
+            const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(200);
+            expect((error as Error).message).toBe('the identity service answered HTTP 200 without a token');
+        }
     });
 
     it('UNAVAILABLE: a 200 with no token is not a renewed session', async () => {
