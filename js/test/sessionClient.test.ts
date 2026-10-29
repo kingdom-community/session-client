@@ -171,6 +171,25 @@ describe('construction', () => {
         expect(calls.map((call) => call.body)).toEqual([{username: 'alice', password: 'correct-horse'}, null, null]);
     });
 
+    it('carries a bearer token only on the calls that present a session', async () => {
+        const {client, calls} = clientWith([{status: 200, body: {...TOKENS, valid: true, username: 'alice'}}]);
+        await client.register('alice', 'correct-horse');
+        await client.login('alice', 'correct-horse');
+        await client.refreshSession('the-old-refresh');
+        await client.validateSession('the-access');
+        await client.logout('the-access');
+        expect(calls.map((call) => call.headers['Authorization'])).toEqual([
+            undefined,
+            undefined,
+            undefined,
+            'Bearer the-access',
+            'Bearer the-access'
+        ]);
+        // The refresh token travels in the body it was asked for, never as a
+        // bearer credential a validate route would accept.
+        expect(calls[2]!.body).toEqual({refreshToken: 'the-old-refresh'});
+    });
+
     it('copies the headers and message fields it is given', async () => {
         const headers: Record<string, string> = {'X-Api-Key': 'k'};
         const messageFields = ['detail'];
@@ -347,6 +366,16 @@ describe('register', () => {
             status: 429
         });
     });
+
+    it('falls back to its own wording when a refusal supplies no message', async () => {
+        const {client} = clientWith([{status: 409, body: {}}]);
+        await expect(client.register('alice', 'Str0ng-Pass!')).resolves.toEqual({
+            ok: false,
+            status: 409,
+            message: 'That account could not be created.',
+            raw: {}
+        });
+    });
 });
 
 describe('validateSession', () => {
@@ -388,6 +417,26 @@ describe('validateSession', () => {
         await expect(client.validateSession('t')).resolves.toMatchObject({ok: false, status: 401});
     });
 
+    it('falls back to its own wording when a refusal supplies no message', async () => {
+        const {client} = clientWith([{status: 401, body: {}}]);
+        await expect(client.validateSession('t')).resolves.toEqual({
+            ok: false,
+            status: 401,
+            message: 'That session is not valid.',
+            raw: {}
+        });
+    });
+
+    it('says a missing token was the reason, with no body to hand back', async () => {
+        const {client} = clientWith([{status: 200, body: {valid: true}}]);
+        await expect(client.validateSession('')).resolves.toEqual({
+            ok: false,
+            status: 401,
+            message: 'No bearer token was supplied.',
+            raw: null
+        });
+    });
+
     it('drops non-string entries out of roles rather than handing back junk', async () => {
         const {client} = clientWith([
             {status: 200, body: {valid: true, username: 'alice', roles: ['ROLE_USER', 3, null]}}
@@ -414,6 +463,16 @@ describe('refreshSession', () => {
     it('reports a spent or unknown refresh token as a refusal', async () => {
         const {client} = clientWith([{status: 401, body: {message: 'refresh token not recognised'}}]);
         await expect(client.refreshSession('spent')).resolves.toMatchObject({ok: false, status: 401});
+    });
+
+    it('falls back to its own wording when a refusal supplies no message', async () => {
+        const {client} = clientWith([{status: 401, body: {}}]);
+        await expect(client.refreshSession('spent')).resolves.toEqual({
+            ok: false,
+            status: 401,
+            message: 'That session could not be renewed.',
+            raw: {}
+        });
     });
 });
 
