@@ -219,6 +219,26 @@ class TestConstruction(unittest.TestCase):
             [{"username": "alice", "password": "correct-horse"}, None, None],
         )
 
+    def test_carries_a_bearer_token_only_on_the_calls_that_present_a_session(self):
+        payload = dict(TOKENS, valid=True, username="alice")
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(payload)
+        ) as m:
+            c = client()
+            c.register("alice", "correct-horse")
+            c.login("alice", "correct-horse")
+            c.refresh_session("the-old-refresh")
+            c.validate_session("the-access")
+            c.logout("the-access")
+        requests = [call[0][0] for call in m.call_args_list]
+        self.assertEqual(
+            [r.headers.get("Authorization") for r in requests],
+            [None, None, None, "Bearer the-access", "Bearer the-access"],
+        )
+        # The refresh token travels in the body it was asked for, never as a
+        # bearer credential a validate route would accept.
+        self.assertEqual(json.loads(requests[2].data), {"refreshToken": "the-old-refresh"})
+
     def test_copies_the_headers_and_message_fields_it_is_given(self):
         headers = {"X-Api-Key": "k"}
         message_fields = ["detail"]
@@ -416,6 +436,16 @@ class TestRegister(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.status, 429)
 
+    def test_falls_back_to_its_own_wording_when_a_refusal_supplies_no_message(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(409, {})
+        ):
+            result = client().register("alice", "Str0ng-Pass!")
+        self.assertEqual(
+            result,
+            Refusal(status=409, message="That account could not be created.", raw={}),
+        )
+
 
 class TestValidateSession(unittest.TestCase):
     def test_a_valid_session_returns_the_account(self):
@@ -467,6 +497,23 @@ class TestValidateSession(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.status, 401)
 
+    def test_falls_back_to_its_own_wording_when_a_refusal_supplies_no_message(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(401, {})
+        ):
+            result = client().validate_session("t")
+        self.assertEqual(
+            result, Refusal(status=401, message="That session is not valid.", raw={})
+        )
+
+    def test_says_a_missing_token_was_the_reason_with_no_body_to_hand_back(self):
+        with mock.patch("urllib.request.urlopen"):
+            result = client().validate_session("")
+        self.assertEqual(
+            result,
+            Refusal(status=401, message="No bearer token was supplied.", raw=None),
+        )
+
     def test_non_string_roles_are_dropped_rather_than_handed_back(self):
         payload = {"valid": True, "username": "alice", "roles": ["ROLE_USER", 3, None]}
         with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
@@ -503,6 +550,16 @@ class TestRefreshSession(unittest.TestCase):
             result = client().refresh_session("spent")
         self.assertFalse(result.ok)
         self.assertEqual(result.status, 401)
+
+    def test_falls_back_to_its_own_wording_when_a_refusal_supplies_no_message(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(401, {})
+        ):
+            result = client().refresh_session("spent")
+        self.assertEqual(
+            result,
+            Refusal(status=401, message="That session could not be renewed.", raw={}),
+        )
 
 
 class TestLogout(unittest.TestCase):
