@@ -122,7 +122,7 @@ Both packages take the same options. Only the base URL is required.
 | timeout | 8s | A caller must not hang because a service is wedged. Generous rather than tight, because checking a password hash is deliberately expensive. |
 | probe timeout | 2s | For the reachability probe: nothing waits on it except a panel saying whether the form is worth filling in. |
 | message fields | `message`, `error` | Body keys searched, in order, for a human-readable refusal message. |
-| headers | none | Extra headers on every request. `Authorization` is set per call. |
+| headers | none | Extra headers on every request. On validate and logout the bearer token replaces any `Authorization` given here; every other call sends one given here as is. |
 
 Anything the client does not model is still on the `raw` property of every
 result except the logout one, which reports flags rather than a body, so a

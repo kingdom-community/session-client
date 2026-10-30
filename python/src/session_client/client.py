@@ -125,8 +125,10 @@ class SessionClient:
     :param message_fields: body keys searched, in order, for a human-readable
         refusal message.
     :param headers: extra headers on every request -- an API key or a tracing
-        header, say. ``Authorization`` is set per call and cannot be overridden
-        here.
+        header, say. On a call that presents a token (:meth:`validate_session`,
+        :meth:`logout`), the bearer token replaces any ``Authorization`` here,
+        whatever its case; on every other call, :meth:`is_reachable` included,
+        one given here is sent as is.
     """
 
     def __init__(
@@ -314,7 +316,7 @@ class SessionClient:
     def is_reachable(self) -> bool:
         """Is the service answering at all?
 
-        Asked with no credential against the validate route: ANY HTTP response
+        Asked with no bearer token against the validate route: ANY HTTP response
         -- including the 401 this is expected to produce -- proves the service
         is up, while a transport failure proves it is not.
 
