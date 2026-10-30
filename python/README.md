@@ -64,8 +64,10 @@ def sign_out(token):
 | `message_fields` | `Sequence[str]` | `("message", "error")` |
 | `headers` | `Mapping[str, str]` | `{}` |
 
-A trailing slash on `base_url` is trimmed. `Authorization` is set per call and
-cannot be overridden through `headers`. An unknown key in `routes` or `fields`
+A trailing slash on `base_url` is trimmed. On a call that presents a token
+(`validate_session`, `logout`), the bearer token replaces any `Authorization` in
+`headers`, whatever its case; on every other call, `is_reachable` included, an
+`Authorization` given in `headers` is sent as is. An unknown key in `routes` or `fields`
 raises `ValueError` rather than being silently ignored.
 
 ### Methods

@@ -92,7 +92,9 @@ export interface SessionClientOptions {
 
     /**
      * Extra headers on every request — an API key or a tracing header, say.
-     * `Authorization` is set per-call and cannot be overridden here.
+     * On a call that presents a token (`validateSession`, `logout`), the
+     * bearer token replaces any `Authorization` here, whatever its case; on
+     * every other call, `isReachable` included, one given here is sent as is.
      */
     headers?: Record<string, string>;
 

@@ -71,8 +71,10 @@ async function signOut(token: string) {
 | `headers` | `Record<string, string>` | `{}` |
 | `fetch` | `typeof fetch` | the global one |
 
-A trailing slash on `baseUrl` is trimmed. `Authorization` is set per call and
-cannot be overridden through `headers`.
+A trailing slash on `baseUrl` is trimmed. On a call that presents a token
+(`validateSession`, `logout`), the bearer token replaces any `Authorization` in
+`headers`, whatever its case; on every other call, `isReachable` included, an
+`Authorization` given in `headers` is sent as is.
 
 ### Methods
 
