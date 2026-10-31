@@ -5,7 +5,7 @@
 // is the part worth reading: SUCCESS, REFUSAL and UNAVAILABLE must never be
 // collapsed into each other.
 
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 
 import {ServiceUnavailableError, SessionClient} from '../src/index';
 
@@ -204,6 +204,40 @@ describe('construction', () => {
         expect(calls[0]!.headers['X-Api-Key']).toBe('k');
         expect(calls[0]!.headers['X-Added']).toBeUndefined();
         expect(result).toMatchObject({ok: false, message: 'first'});
+    });
+
+    // Every call but the probe waits the full timeout, which is generous
+    // because checking a password hash is deliberately slow; the probe waits
+    // only its own, because nothing but a panel waits on it. The delay each
+    // call arms its abort timer with is the observable, so a probe timeout
+    // leaking into a sign-in (or the reverse) fails here by value.
+    it('waits the timeout on every call but the probe, which waits its own', async () => {
+        const cases: [Record<string, unknown>, number, number][] = [
+            [{}, 8000, 2000],
+            [{timeoutMs: 3500, probeTimeoutMs: 1500}, 3500, 1500]
+        ];
+        for (const [options, timeoutMs, probeTimeoutMs] of cases) {
+            const {client} = clientWith([{status: 401, body: {}}], options);
+            const armed = vi.spyOn(globalThis, 'setTimeout');
+            try {
+                await client.register('alice', 'pw');
+                await client.login('alice', 'pw');
+                await client.validateSession('a-token');
+                await client.refreshSession('a-refresh-token');
+                await client.logout('a-token');
+                await client.isReachable();
+                expect(armed.mock.calls.map((call) => call[1])).toEqual([
+                    timeoutMs,
+                    timeoutMs,
+                    timeoutMs,
+                    timeoutMs,
+                    timeoutMs,
+                    probeTimeoutMs
+                ]);
+            } finally {
+                armed.mockRestore();
+            }
+        }
     });
 });
 

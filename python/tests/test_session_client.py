@@ -255,6 +255,33 @@ class TestConstruction(unittest.TestCase):
         self.assertIsNone(sent_headers(m).get("X-added"))
         self.assertEqual(result.message, "first")
 
+    # Every call but the probe waits the full timeout, which is generous
+    # because checking a password hash is deliberately slow; the probe waits
+    # only its own, because nothing but a panel waits on it. The timeout each
+    # call hands to urlopen is the observable, so a probe timeout leaking into
+    # a sign-in (or the reverse) fails here by value.
+    def test_every_call_but_the_probe_waits_the_timeout_and_the_probe_its_own(self):
+        cases = {
+            "defaults": ({}, 8.0, 2.0),
+            "configured": ({"timeout": 3.5, "probe_timeout": 1.5}, 3.5, 1.5),
+        }
+        for name, (kwargs, timeout, probe_timeout) in cases.items():
+            with self.subTest(name):
+                configured = client(**kwargs)
+                with mock.patch(
+                    "urllib.request.urlopen", side_effect=_http_error(401, {})
+                ) as m:
+                    configured.register("alice", "pw")
+                    configured.login("alice", "pw")
+                    configured.validate_session("a-token")
+                    configured.refresh_session("a-refresh-token")
+                    configured.logout("a-token")
+                    configured.is_reachable()
+                self.assertEqual(
+                    [call.kwargs["timeout"] for call in m.call_args_list],
+                    [timeout] * 5 + [probe_timeout],
+                )
+
 
 class TestLogin(unittest.TestCase):
     def test_success_returns_the_issued_tokens(self):
