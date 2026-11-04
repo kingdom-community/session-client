@@ -1140,6 +1140,90 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
         self.assertTrue(result.unavailable)
         self.assertIsNone(result.status)
 
+    # NaN and Infinity are not JSON, whatever ``json.loads`` accepts by default,
+    # so a body carrying one is a body that will not parse. Without that, the
+    # same bytes would be a session here and unreadable in the TypeScript
+    # package.
+
+    def test_unavailable_a_200_with_a_non_json_constant_is_not_a_login(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                text = '{"token": "t", "expiresAt": %s}' % constant
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response(None, text=text),
+                ):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().login("alice", "correct-horse")
+                self.assertEqual(ctx.exception.status, 200)
+
+    def test_unavailable_a_200_with_a_non_json_constant_is_not_a_valid_session(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response(
+                None, text='{"valid": true, "username": "alice", "n": Infinity}'
+            ),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 200)
+
+    def test_refusal_a_401_with_a_non_json_constant_keeps_only_the_fallback(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(
+                401, None, text='{"message": "not this one", "n": NaN}'
+            ),
+        ):
+            result = client().login("alice", "wrong")
+        self.assertEqual(
+            result,
+            Refusal(status=401, message="Those credentials were not accepted."),
+        )
+
+    # A body nested too deeply to parse raises RecursionError, which is neither
+    # a ValueError nor a transport failure. It is a body that says nothing, so
+    # the status decides -- and on logout and the probe, nothing may escape.
+
+    DEEP = "[" * 100000 + "]" * 100000
+
+    def test_unavailable_a_200_nested_too_deeply_is_not_a_login(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response(None, text=self.DEEP),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().login("alice", "correct-horse")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception),
+            "the identity service answered HTTP 200 without a token",
+        )
+
+    def test_refusal_a_401_nested_too_deeply_is_still_a_refusal(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(401, None, text=self.DEEP)
+        ):
+            result = client().login("alice", "wrong")
+        self.assertFalse(result.ok)
+        self.assertEqual(result.status, 401)
+        self.assertEqual(result.message, "Those credentials were not accepted.")
+
+    def test_logout_never_raises_on_a_body_nested_too_deeply(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(503, None, text=self.DEEP)
+        ):
+            result = client().logout("sometoken")
+        self.assertFalse(result.revoked)
+        self.assertTrue(result.unavailable)
+        self.assertEqual(result.status, 503)
+
+    def test_is_reachable_answers_true_on_a_body_nested_too_deeply(self):
+        with mock.patch(
+            "urllib.request.urlopen", side_effect=_http_error(401, None, text=self.DEEP)
+        ):
+            self.assertTrue(client().is_reachable())
+
 
 if __name__ == "__main__":
     unittest.main()
