@@ -75,6 +75,16 @@ def _non_empty_string(value: Any) -> Optional[str]:
     return value if isinstance(value, str) and value.strip() != "" else None
 
 
+def _reject_constant(constant: str) -> Any:
+    """Refuse NaN, Infinity and -Infinity, which ``json.loads`` accepts.
+
+    They are not JSON, and ``JSON.parse`` in the TypeScript package rejects
+    them, so without this the same bytes are a session in one package and
+    unreadable in the other.
+    """
+    raise ValueError("not JSON: %s" % constant)
+
+
 def _timed_out(error: BaseException) -> bool:
     """Was this transport failure the configured timeout expiring?
 
@@ -420,10 +430,13 @@ class SessionClient:
         if not raw:
             return None
         try:
-            return json.loads(raw)
-        except (ValueError, UnicodeDecodeError):
+            return json.loads(raw, parse_constant=_reject_constant)
+        except (ValueError, UnicodeDecodeError, RecursionError):
             # An error page from a proxy in front of the service is HTML. A
-            # body that cannot be read is not an answer.
+            # body that cannot be read is not an answer. ``RecursionError`` is
+            # named because it is neither of the others: a body nested too
+            # deeply to parse would otherwise escape every method, logout
+            # included.
             return None
 
     # Any other 2xx is not "no" either. The service did not refuse -- it

@@ -947,4 +947,72 @@ describe('the three outcomes are kept apart', () => {
             status: null
         });
     });
+
+    // NaN and Infinity are not JSON, so a body carrying one is a body that
+    // will not parse. These pin behaviour this package already has, because
+    // the Python package did not: there, `json.loads` accepted them by default
+    // and the same bytes were a session.
+    it('UNAVAILABLE: a 200 with a non-JSON constant is not a login', async () => {
+        for (const constant of ['NaN', 'Infinity', '-Infinity']) {
+            const text = `{"token": "t", "expiresAt": ${constant}}`;
+            const {client} = clientWith([{status: 200, text}]);
+            const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(200);
+        }
+    });
+
+    it('UNAVAILABLE: a 200 with a non-JSON constant is not a valid session', async () => {
+        const text = '{"valid": true, "username": "alice", "n": Infinity}';
+        const {client} = clientWith([{status: 200, text}]);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+    });
+
+    it('REFUSAL: a 401 with a non-JSON constant keeps only the fallback', async () => {
+        const {client} = clientWith([{status: 401, text: '{"message": "not this one", "n": NaN}'}]);
+        await expect(client.login('alice', 'wrong')).resolves.toEqual({
+            ok: false,
+            status: 401,
+            message: 'Those credentials were not accepted.',
+            raw: null
+        });
+    });
+
+    // A body nested too deeply to read says nothing, so the status decides.
+    // These pin behaviour this package already has, because the Python package
+    // did not: there, RecursionError escaped every method, logout included.
+    // Here it may parse or not, and either way it is not an object, so `raw`
+    // is left unasserted.
+    const DEEP = '['.repeat(100000) + ']'.repeat(100000);
+
+    it('UNAVAILABLE: a 200 nested too deeply is not a login', async () => {
+        const {client} = clientWith([{status: 200, text: DEEP}]);
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered HTTP 200 without a token');
+    });
+
+    it('REFUSAL: a 401 nested too deeply is still a refusal', async () => {
+        const {client} = clientWith([{status: 401, text: DEEP}]);
+        const result = await client.login('alice', 'wrong');
+        expect(result.ok).toBe(false);
+        expect(result).toMatchObject({status: 401, message: 'Those credentials were not accepted.'});
+    });
+
+    it('logout never throws on a body nested too deeply', async () => {
+        const {client} = clientWith([{status: 503, text: DEEP}]);
+        await expect(client.logout('sometoken')).resolves.toMatchObject({
+            revoked: false,
+            unavailable: true,
+            status: 503
+        });
+    });
+
+    it('isReachable answers true on a body nested too deeply', async () => {
+        const {client} = clientWith([{status: 401, text: DEEP}]);
+        await expect(client.isReachable()).resolves.toBe(true);
+    });
 });
