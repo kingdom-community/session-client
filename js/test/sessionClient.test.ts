@@ -1015,4 +1015,87 @@ describe('the three outcomes are kept apart', () => {
         const {client} = clientWith([{status: 401, text: DEEP}]);
         await expect(client.isReachable()).resolves.toBe(true);
     });
+
+    // Whitespace is what `trim` says it is: a byte order mark is blank and
+    // U+0085 is not. These pin behaviour this package already has, because the
+    // Python package did not: there, `str.strip` drew the line elsewhere and
+    // the same name was a session in one package and not the other.
+    it('UNAVAILABLE: a 200 whose name is a byte order mark is not a session', async () => {
+        const {client} = clientWith([{status: 200, body: {username: '\ufeff'}}]);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+    });
+
+    it('SUCCESS: a name trim leaves alone is a name', async () => {
+        for (const username of ['\u0085', '\x1c', '\x1f']) {
+            const {client} = clientWith([{status: 200, body: {username}}]);
+            await expect(client.validateSession('t')).resolves.toMatchObject({ok: true, username});
+        }
+    });
+
+    it('REFUSAL: a message is trimmed as trim would', async () => {
+        const cases: [Record<string, string>, string][] = [
+            [{message: '\ufeff', error: 'next field'}, 'next field'],
+            [{message: '\ufeff denied \ufeff'}, 'denied'],
+            [{message: '\u0085denied\x1c'}, '\u0085denied\x1c']
+        ];
+        for (const [body, message] of cases) {
+            const {client} = clientWith([{status: 400, body}]);
+            await expect(client.login('alice', 'wrong')).resolves.toMatchObject({ok: false, message});
+        }
+    });
+
+    it('trims the base URL as trim would', async () => {
+        const {fetchImpl, calls} = stubFetch([{status: 200, body: TOKENS}]);
+        const client = new SessionClient({baseUrl: `\ufeff${BASE_URL}/\ufeff`, fetch: fetchImpl});
+        await client.login('alice', 'correct-horse');
+        expect(calls[0]!.url).toBe(`${BASE_URL}/login`);
+        expect(() => new SessionClient({baseUrl: '\ufeff'})).toThrow(/baseUrl/);
+    });
+
+    // JSON is UTF-8 and `Response.text()` reads nothing else, so a body in
+    // another encoding is a body that will not parse. These pin behaviour this
+    // package already has, because the Python package did not: there,
+    // `json.loads` detected the encoding and the same bytes were a session.
+    // A real `Response` is used, because the decoding is what is being pinned
+    // and the `stubFetch` reply is already text.
+    const clientOverBytes = (bytes: number[], status = 200) =>
+        new SessionClient({
+            baseUrl: BASE_URL,
+            fetch: (async () => new Response(Uint8Array.from(bytes), {status})) as typeof globalThis.fetch
+        });
+    const codes = (text: string) => [...text].map((character) => character.charCodeAt(0));
+    const SESSION = codes('{"valid": true, "username": "alice"}');
+
+    it('UNAVAILABLE: a 200 not in UTF-8 is not a session', async () => {
+        const encodings = [
+            SESSION.flatMap((code) => [code, 0]),
+            SESSION.flatMap((code) => [0, code]),
+            SESSION.flatMap((code) => [code, 0, 0, 0]),
+            [0xff, 0xfe, ...SESSION.flatMap((code) => [code, 0])]
+        ];
+        for (const bytes of encodings) {
+            const error = await clientOverBytes(bytes).validateSession('t').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(200);
+        }
+    });
+
+    it('REFUSAL: a 401 not in UTF-8 keeps only the fallback', async () => {
+        const bytes = codes('{"message": "not this one"}').flatMap((code) => [code, 0]);
+        await expect(clientOverBytes(bytes, 401).login('alice', 'wrong')).resolves.toEqual({
+            ok: false,
+            status: 401,
+            message: 'Those credentials were not accepted.',
+            raw: null
+        });
+    });
+
+    it('SUCCESS: a UTF-8 byte order mark is dropped', async () => {
+        await expect(clientOverBytes([0xef, 0xbb, 0xbf, ...SESSION]).validateSession('t')).resolves.toMatchObject({
+            ok: true,
+            username: 'alice'
+        });
+    });
 });

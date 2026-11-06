@@ -71,8 +71,22 @@ def _is_not_an_answer(status: int) -> bool:
     return 300 <= status < 400 or status >= 500
 
 
+# Exactly what ``String.prototype.trim`` removes. A bare ``str.strip()`` also
+# removes U+001C-U+001F and U+0085 and keeps U+FEFF, so without this the same
+# name is a session in one package and not in the other. ``trim`` is a language
+# definition the TypeScript package cannot narrow, so it is the one matched.
+_WHITESPACE = (
+    "\t\n\x0b\x0c\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+    "\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
+
+
+def _trim(value: str) -> str:
+    return value.strip(_WHITESPACE)
+
+
 def _non_empty_string(value: Any) -> Optional[str]:
-    return value if isinstance(value, str) and value.strip() != "" else None
+    return value if isinstance(value, str) and _trim(value) != "" else None
 
 
 def _reject_constant(constant: str) -> Any:
@@ -151,7 +165,7 @@ class SessionClient:
         message_fields: Sequence[str] = DEFAULT_MESSAGE_FIELDS,
         headers: Optional[Mapping[str, str]] = None,
     ) -> None:
-        cleaned = (base_url or "").strip().rstrip("/")
+        cleaned = _trim(base_url or "").rstrip("/")
         if not cleaned:
             # Failing here, loudly, at construction. A client that invents a
             # default hostname for somebody else's identity service fails much
@@ -430,7 +444,12 @@ class SessionClient:
         if not raw:
             return None
         try:
-            return json.loads(raw, parse_constant=_reject_constant)
+            # Decoded here rather than left to ``json.loads``, which on bytes
+            # detects UTF-16 and UTF-32 and lets surrogates through: JSON is
+            # UTF-8, and ``Response.text()`` in the TypeScript package reads
+            # nothing else. ``utf-8-sig`` keeps the one byte order mark that
+            # ``text()`` drops as well.
+            return json.loads(raw.decode("utf-8-sig"), parse_constant=_reject_constant)
         except (ValueError, UnicodeDecodeError, RecursionError):
             # An error page from a proxy in front of the service is HTML. A
             # body that cannot be read is not an answer. ``RecursionError`` is
@@ -468,8 +487,8 @@ class SessionClient:
         if record is not None:
             for key in self.message_fields:
                 value = record.get(key)
-                if isinstance(value, str) and value.strip() != "":
-                    return value.strip()
+                if isinstance(value, str) and _trim(value) != "":
+                    return _trim(value)
         return fallback
 
     def _tokens_from(self, parsed: Any) -> Optional[LoginSuccess]:

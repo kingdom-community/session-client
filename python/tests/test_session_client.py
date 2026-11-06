@@ -1224,6 +1224,95 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
         ):
             self.assertTrue(client().is_reachable())
 
+    # Whitespace is what ``String.prototype.trim`` says it is, not what
+    # ``str.strip`` says: a byte order mark is blank and U+0085 is not. Without
+    # that, the same name would be a session in one package and not the other.
+
+    def test_unavailable_a_200_whose_name_is_a_byte_order_mark_is_not_a_session(self):
+        with mock.patch(
+            "urllib.request.urlopen",
+            return_value=_mock_response({"username": "\ufeff"}),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 200)
+
+    def test_success_a_name_trim_leaves_alone_is_a_name(self):
+        for username in ("\u0085", "\x1c", "\x1f"):
+            with self.subTest(username=username):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response({"username": username}),
+                ):
+                    result = client().validate_session("t")
+                self.assertTrue(result.ok)
+                self.assertEqual(result.username, username)
+
+    def test_refusal_message_is_trimmed_as_trim_would(self):
+        cases = (
+            ({"message": "\ufeff", "error": "next field"}, "next field"),
+            ({"message": "\ufeff denied \ufeff"}, "denied"),
+            ({"message": "\u0085denied\x1c"}, "\u0085denied\x1c"),
+        )
+        for payload, expected in cases:
+            with self.subTest(payload=payload):
+                with mock.patch(
+                    "urllib.request.urlopen", side_effect=_http_error(400, payload)
+                ):
+                    result = client().login("alice", "wrong")
+                self.assertEqual(result.message, expected)
+
+    def test_base_url_is_trimmed_as_trim_would(self):
+        self.assertEqual(SessionClient("\ufeff%s/\ufeff" % BASE_URL).base_url, BASE_URL)
+        with self.assertRaises(ValueError):
+            SessionClient("\ufeff")
+
+    # JSON is UTF-8, and ``Response.text()`` in the TypeScript package reads
+    # nothing else, so a body in another encoding is a body that will not parse.
+    # Without that, ``json.loads`` detects the encoding and the same bytes would
+    # be a session here and unreadable there.
+
+    SESSION = '{"valid": true, "username": "alice"}'
+
+    def test_unavailable_a_200_not_in_utf8_is_not_a_session(self):
+        for encoding in ("utf-16-le", "utf-16-be", "utf-32-le", "utf-16"):
+            with self.subTest(encoding=encoding):
+                resp = _mock_response(None)
+                resp.read.return_value = self.SESSION.encode(encoding)
+                with mock.patch("urllib.request.urlopen", return_value=resp):
+                    with self.assertRaises(ServiceUnavailableError) as ctx:
+                        client().validate_session("t")
+                self.assertEqual(ctx.exception.status, 200)
+
+    def test_refusal_a_401_not_in_utf8_keeps_only_the_fallback(self):
+        err = _http_error(401, None)
+        err.read.return_value = '{"message": "not this one"}'.encode("utf-16-le")
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            result = client().login("alice", "wrong")
+        self.assertEqual(
+            result,
+            Refusal(status=401, message="Those credentials were not accepted."),
+        )
+
+    def test_success_a_utf8_byte_order_mark_is_dropped(self):
+        resp = _mock_response(None)
+        resp.read.return_value = b"\xef\xbb\xbf" + self.SESSION.encode()
+        with mock.patch("urllib.request.urlopen", return_value=resp):
+            result = client().validate_session("t")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.username, "alice")
+
+    # Python only, for now: ``Response.text()`` decodes with replacement, so
+    # this body is read in the TypeScript package. That drift is #44, and this
+    # side already fails closed.
+    def test_unavailable_a_200_with_surrogate_bytes_is_not_a_session(self):
+        resp = _mock_response(None)
+        resp.read.return_value = b'{"valid": true, "x": "\xed\xa0\x80"}'
+        with mock.patch("urllib.request.urlopen", return_value=resp):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
+                client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
