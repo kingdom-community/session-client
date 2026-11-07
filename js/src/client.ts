@@ -114,7 +114,11 @@ export class SessionClient {
         if (typeof fetchImpl !== 'function') {
             throw new Error('No fetch implementation available; pass one as options.fetch');
         }
-        this.fetchImpl = fetchImpl;
+        // Wrapped, because `this.fetchImpl(...)` on the bare function would make
+        // this client its receiver. Node does not look, but a browser or a
+        // worker throws "Illegal invocation", which would read as an outage on
+        // every call while nothing was ever sent.
+        this.fetchImpl = (input, init) => fetchImpl(input, init);
     }
 
     // ---- the calls -------------------------------------------------------
