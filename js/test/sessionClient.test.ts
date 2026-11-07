@@ -67,6 +67,31 @@ describe('construction', () => {
         expect(() => new SessionClient({baseUrl: ''})).toThrow(/baseUrl/);
     });
 
+    it('calls fetch with no receiver, as browsers and workers insist', async () => {
+        // Node does not look at the receiver, so nothing but a stub that does
+        // can catch this. Where it matters it arrives as UNAVAILABLE on every
+        // call, with the "Illegal invocation" that explains it deliberately
+        // not carried.
+        const browserFetch = (async function (this: unknown) {
+            if (this !== undefined && this !== globalThis) {
+                throw new TypeError('Illegal invocation');
+            }
+            return new Response(JSON.stringify(TOKENS), {status: 200});
+        }) as unknown as typeof globalThis.fetch;
+
+        const injected = new SessionClient({baseUrl: BASE_URL, fetch: browserFetch});
+        await expect(injected.login('alice', 'correct-horse')).resolves.toMatchObject({ok: true});
+        await expect(injected.isReachable()).resolves.toBe(true);
+
+        vi.stubGlobal('fetch', browserFetch);
+        try {
+            const ambient = new SessionClient({baseUrl: BASE_URL});
+            await expect(ambient.login('alice', 'correct-horse')).resolves.toMatchObject({ok: true});
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
     it('trims a trailing slash off the base URL', async () => {
         const {fetchImpl, calls} = stubFetch([{status: 200, body: TOKENS}]);
         const client = new SessionClient({baseUrl: `${BASE_URL}/`, fetch: fetchImpl});
