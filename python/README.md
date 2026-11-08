@@ -101,6 +101,13 @@ closed**: a 200 whose body says nothing about a session, or whose `valid` is
 neither `true` nor `false` (a `null` reads as absent), raises
 `ServiceUnavailableError`, and an explicit `valid: false` is a `Refusal` whose
 `status` is the 200 the service actually sent — branch on `ok`, not on `status`.
+`username` is `None` when the service confirms `valid: true` without naming the
+account. An empty token is refused with status `401` without a request being
+sent.
+
+`register` reads a `200` or `201` as created whatever the body holds: the
+`username` is the one the service echoes back, or the one passed in when the
+body has no usable name.
 
 ### Adapting to a differently-named service
 
