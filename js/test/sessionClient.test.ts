@@ -391,6 +391,19 @@ describe('register', () => {
         }
     });
 
+    it('reads a 200 or 201 as created whatever its body, since the status is the answer', async () => {
+        // Unlike login, register needs nothing from the body: an HTML page or
+        // an empty reply still keeps the typed name, with no body to hand back.
+        for (const reply of [{status: 201, text: '<html>Created</html>'}, {status: 200, text: ''}]) {
+            const {client} = clientWith([reply]);
+            await expect(client.register('alice', 'Str0ng-Pass!')).resolves.toEqual({
+                ok: true,
+                username: 'alice',
+                raw: null
+            });
+        }
+    });
+
     it('sends an email only when one was given', async () => {
         const {client, calls} = clientWith([{status: 201, body: {}}, {status: 201, body: {}}]);
         await client.register('alice', 'Str0ng-Pass!');

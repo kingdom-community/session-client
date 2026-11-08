@@ -58,10 +58,13 @@ Three consequences of that model, all deliberate:
 
 - **A 5xx is not a refusal.** "We do not know" and "no" are different answers,
   and only one of them should be shown to a user as a rejection.
-- **A 200 that is not an answer is not a success.** A login reply with no token,
-  or a body that is an HTML error page from a proxy in front of the service, is
-  UNAVAILABLE. Treating it as a login would store an empty session and present
-  as "signed in, but nothing works".
+- **A 200 that is not an answer is not a success.** A login or refresh reply
+  with no token, or a body that is an HTML error page from a proxy in front of
+  the service, is UNAVAILABLE; so is a validate reply that says nothing about a
+  session. Treating it as a login would store an empty session and present as
+  "signed in, but nothing works". Register is the exception, because it needs
+  nothing from the body: a `200` or `201` is itself the answer, and the typed
+  username is kept when no usable one is echoed back.
 - **Logout never reports UNAVAILABLE by throwing.** It returns a result. A
   caller must be able to clear its own local session whatever happened, and a
   method that throws is a method somebody forgets to wrap.

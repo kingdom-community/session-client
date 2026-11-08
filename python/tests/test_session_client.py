@@ -425,6 +425,18 @@ class TestRegister(unittest.TestCase):
                     result = client().register("alice", "Str0ng-Pass!")
                 self.assertEqual(result, RegisterSuccess(username="alice", raw=body))
 
+    def test_a_200_or_201_is_created_whatever_its_body_since_the_status_is_the_answer(self):
+        # Unlike login, register needs nothing from the body: an HTML page or
+        # an empty reply still keeps the typed name, with no body to hand back.
+        for status, text in ((201, "<html>Created</html>"), (200, "")):
+            with self.subTest(status=status, text=text):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response(None, status=status, text=text),
+                ):
+                    result = client().register("alice", "Str0ng-Pass!")
+                self.assertEqual(result, RegisterSuccess(username="alice", raw=None))
+
     def test_email_is_sent_only_when_given(self):
         with mock.patch("urllib.request.urlopen", return_value=_mock_response({})) as m:
             client().register("alice", "Str0ng-Pass!")
