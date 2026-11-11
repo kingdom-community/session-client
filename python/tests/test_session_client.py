@@ -18,6 +18,7 @@ import urllib.error
 from unittest import mock
 
 from session_client import (
+    LoginSuccess,
     Refusal,
     RegisterSuccess,
     ServiceUnavailableError,
@@ -114,6 +115,40 @@ class TestConstruction(unittest.TestCase):
             client(routes={"login": "/api/v2/sessions"}).login("alice", "correct-horse")
         self.assertEqual(sent_url(m), BASE_URL + "/api/v2/sessions")
 
+    def test_every_call_takes_a_route_and_a_route_not_given_keeps_its_default(self):
+        payload = dict(TOKENS, valid=True, username="alice")
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(payload)
+        ) as m:
+            c = client(
+                routes={
+                    "register": "/v2/accounts",
+                    "validate": "/v2/me",
+                    "logout": "/v2/sessions/revoke",
+                    "refresh": "/v2/sessions/renew",
+                }
+            )
+            c.register("alice", "correct-horse")
+            c.login("alice", "correct-horse")
+            c.validate_session("t")
+            c.logout("t")
+            c.refresh_session("r1")
+            c.is_reachable()
+        self.assertEqual(
+            [
+                "%s %s" % (call[0][0].get_method(), call[0][0].full_url)
+                for call in m.call_args_list
+            ],
+            [
+                "POST " + BASE_URL + "/v2/accounts",
+                "POST " + BASE_URL + "/login",
+                "GET " + BASE_URL + "/v2/me",
+                "POST " + BASE_URL + "/v2/sessions/revoke",
+                "POST " + BASE_URL + "/v2/sessions/renew",
+                "GET " + BASE_URL + "/v2/me",
+            ],
+        )
+
     def test_an_unknown_route_key_is_rejected_loudly(self):
         with self.assertRaises(ValueError):
             client(routes={"signin": "/signin"})
@@ -132,6 +167,51 @@ class TestConstruction(unittest.TestCase):
         self.assertEqual(result.token, "abc")
         self.assertEqual(result.expires_at, "later")
         self.assertEqual(result.refresh_token, "r2")
+
+    def test_a_refresh_reply_is_read_through_the_field_map_not_the_defaults(self):
+        payload = dict(
+            TOKENS, access_token="abc", expires_at="later", refresh_token="r2"
+        )
+        with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
+            result = client(
+                fields={
+                    "token": "access_token",
+                    "expires_at": "expires_at",
+                    "refresh_token": "refresh_token",
+                }
+            ).refresh_session("r1")
+        self.assertEqual(
+            result,
+            LoginSuccess(
+                token="abc", expires_at="later", refresh_token="r2", raw=payload
+            ),
+        )
+
+    # The field map names what the client READS. What it sends is the request
+    # body the service is asked for, and a remapped name must not leak into it.
+    def test_request_bodies_keep_their_own_names_whatever_the_field_map_says(self):
+        payload = {"access_token": "abc", "login": "alice"}
+        with mock.patch(
+            "urllib.request.urlopen", return_value=_mock_response(payload)
+        ) as m:
+            c = client(
+                fields={
+                    "token": "access_token",
+                    "username": "login",
+                    "refresh_token": "refresh_token",
+                }
+            )
+            c.register("alice", "correct-horse")
+            c.login("alice", "correct-horse")
+            c.refresh_session("r1")
+        self.assertEqual(
+            [json.loads(call[0][0].data) for call in m.call_args_list],
+            [
+                {"username": "alice", "password": "correct-horse"},
+                {"username": "alice", "password": "correct-horse"},
+                {"refreshToken": "r1"},
+            ],
+        )
 
     def test_a_validate_response_is_read_through_the_field_map_not_the_defaults(self):
         payload = {
@@ -443,6 +523,18 @@ class TestRegister(unittest.TestCase):
             self.assertNotIn("email", sent_body(m))
             client().register("bob", "Str0ng-Pass!", "b@example.test")
             self.assertEqual(sent_body(m)["email"], "b@example.test")
+
+    def test_no_email_is_sent_when_the_one_given_is_empty_or_none(self):
+        for email in ("", None):
+            with self.subTest(email=email):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response({}, status=201),
+                ) as m:
+                    client().register("alice", "Str0ng-Pass!", email)
+                self.assertEqual(
+                    sent_body(m), {"username": "alice", "password": "Str0ng-Pass!"}
+                )
 
     def test_duplicate_username_is_a_refusal_with_409(self):
         with mock.patch(
