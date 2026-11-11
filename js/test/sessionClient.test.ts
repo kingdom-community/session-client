@@ -123,6 +123,31 @@ describe('construction', () => {
         expect(calls[0]!.url).toBe(`${BASE_URL}/api/v2/sessions`);
     });
 
+    it('takes a route for every call, and keeps the default for any route not given', async () => {
+        const {client, calls} = clientWith([{status: 200, body: {...TOKENS, valid: true, username: 'alice'}}], {
+            routes: {
+                register: '/v2/accounts',
+                validate: '/v2/me',
+                logout: '/v2/sessions/revoke',
+                refresh: '/v2/sessions/renew'
+            }
+        });
+        await client.register('alice', 'correct-horse');
+        await client.login('alice', 'correct-horse');
+        await client.validateSession('t');
+        await client.logout('t');
+        await client.refreshSession('r1');
+        await client.isReachable();
+        expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+            `POST ${BASE_URL}/v2/accounts`,
+            `POST ${BASE_URL}/login`,
+            `GET ${BASE_URL}/v2/me`,
+            `POST ${BASE_URL}/v2/sessions/revoke`,
+            `POST ${BASE_URL}/v2/sessions/renew`,
+            `GET ${BASE_URL}/v2/me`
+        ]);
+    });
+
     it('takes a field map, for a service that names its fields differently', async () => {
         const {client} = clientWith(
             [{status: 200, body: {access_token: 'abc', expires_at: 'later', refresh_token: 'r2'}}],
@@ -130,6 +155,37 @@ describe('construction', () => {
         );
         const result = await client.login('alice', 'correct-horse');
         expect(result).toMatchObject({ok: true, token: 'abc', expiresAt: 'later', refreshToken: 'r2'});
+    });
+
+    it('reads a refresh reply through the field map, and not through the default names', async () => {
+        const {client} = clientWith(
+            [{status: 200, body: {access_token: 'abc', expires_at: 'later', refresh_token: 'r2', ...TOKENS}}],
+            {fields: {token: 'access_token', expiresAt: 'expires_at', refreshToken: 'refresh_token'}}
+        );
+        await expect(client.refreshSession('r1')).resolves.toEqual({
+            ok: true,
+            token: 'abc',
+            expiresAt: 'later',
+            refreshToken: 'r2',
+            raw: {access_token: 'abc', expires_at: 'later', refresh_token: 'r2', ...TOKENS}
+        });
+    });
+
+    // The field map names what the client READS. What it sends is the
+    // request body the service is asked for, and a remapped name must not
+    // leak into it.
+    it('sends the request bodies under their own names, whatever the field map says', async () => {
+        const {client, calls} = clientWith([{status: 200, body: {access_token: 'abc', login: 'alice'}}], {
+            fields: {token: 'access_token', username: 'login', refreshToken: 'refresh_token'}
+        });
+        await client.register('alice', 'correct-horse');
+        await client.login('alice', 'correct-horse');
+        await client.refreshSession('r1');
+        expect(calls.map((call) => call.body)).toEqual([
+            {username: 'alice', password: 'correct-horse'},
+            {username: 'alice', password: 'correct-horse'},
+            {refreshToken: 'r1'}
+        ]);
     });
 
     it('reads a validate response through the field map, and not through the default names', async () => {
@@ -414,6 +470,16 @@ describe('register', () => {
             password: 'Str0ng-Pass!',
             email: 'b@example.test'
         });
+    });
+
+    it('sends no email when the one given is empty or null', async () => {
+        const {client, calls} = clientWith([{status: 201, body: {}}]);
+        await client.register('alice', 'Str0ng-Pass!', '');
+        await client.register('alice', 'Str0ng-Pass!', null);
+        expect(calls.map((call) => call.body)).toEqual([
+            {username: 'alice', password: 'Str0ng-Pass!'},
+            {username: 'alice', password: 'Str0ng-Pass!'}
+        ]);
     });
 
     it('reports a taken username as a refusal', async () => {
