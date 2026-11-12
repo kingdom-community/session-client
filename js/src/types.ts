@@ -171,15 +171,20 @@ export type ValidateResult = ValidateSuccess | Refusal;
 /**
  * The outcome of a logout.
  *
- * Alone among the calls, this NEVER throws `ServiceUnavailableError`: a caller
- * must clear its local session whatever happened, and a method that throws is
- * a method somebody forgets to wrap. `unavailable` is reported as a field so
- * it can be logged, not so it can be acted on.
+ * Alone among the calls that act on an account, this NEVER throws
+ * `ServiceUnavailableError` (`isReachable` does not either, because
+ * reachability is what it reports): a caller must clear its local session
+ * whatever happened, and a method that throws is a method somebody forgets to
+ * wrap. `unavailable` is reported as a field so it can be logged, not so it
+ * can be acted on.
  */
 export interface LogoutResult {
     /** The service confirmed the token is revoked. */
     revoked: boolean;
-    /** The service could not be reached, so the token may still be live server-side. */
+    /**
+     * Nothing is known: the service could not be reached, or answered with a
+     * 3xx or 5xx, so the token may still be live server-side.
+     */
     unavailable: boolean;
     /** Set when the service answered — an already-expired token, typically. */
     status: number | null;

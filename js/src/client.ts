@@ -256,12 +256,12 @@ export class SessionClient {
     /**
      * Revoke a bearer token.
      *
-     * Best-effort BY CONTRACT, and the only method here that never throws
-     * `ServiceUnavailableError`. Clear the local session whatever this
-     * returns: refusing to sign somebody out of their own browser because the
-     * identity service is restarting is worse than a token that outlives its
-     * cookie by its remaining lifetime. The returned flags are there to be
-     * reported, not to be acted on.
+     * Best-effort BY CONTRACT, and the only call acting on an account that
+     * never throws `ServiceUnavailableError`. Clear the local session
+     * whatever this returns: refusing to sign somebody out of their own
+     * browser because the identity service is restarting is worse than a
+     * token that outlives its cookie by its remaining lifetime. The returned
+     * flags are there to be reported, not to be acted on.
      */
     async logout(token: string): Promise<LogoutResult> {
         try {
