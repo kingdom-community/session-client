@@ -150,16 +150,18 @@ class ValidateSuccess:
 class LogoutResult:
     """The outcome of a logout.
 
-    Alone among the calls, logout NEVER raises ``ServiceUnavailableError``: a
-    caller must clear its local session whatever happened, and a method that
-    raises is a method somebody forgets to wrap. ``unavailable`` is reported as
-    a field so it can be logged, not so it can be acted on.
+    Alone among the calls that act on an account, logout NEVER raises
+    ``ServiceUnavailableError`` (``is_reachable`` does not either, because
+    reachability is what it reports): a caller must clear its local session
+    whatever happened, and a method that raises is a method somebody forgets
+    to wrap. ``unavailable`` is reported as a field so it can be logged, not
+    so it can be acted on.
     """
 
     #: The service confirmed the token is revoked.
     revoked: bool
-    #: The service could not be reached, so the token may still be live
-    #: server-side.
+    #: Nothing is known: the service could not be reached, or answered with a
+    #: 3xx or 5xx, so the token may still be live server-side.
     unavailable: bool
     #: Set when the service answered -- an already-expired token, typically.
     status: Optional[int] = None
@@ -172,5 +174,5 @@ RefreshResult = Union[LoginSuccess, Refusal]
 RegisterResult = Union[RegisterSuccess, Refusal]
 ValidateResult = Union[ValidateSuccess, Refusal]
 
-#: Type of the optional per-request extra headers.
+#: Type of the optional extra headers, sent on every request the client makes.
 Headers = Dict[str, str]
