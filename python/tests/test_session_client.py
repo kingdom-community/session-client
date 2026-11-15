@@ -833,23 +833,38 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             "urllib.request.urlopen",
             return_value=_mock_response(None, text="<html>502 Bad Gateway</html>"),
         ):
-            with self.assertRaises(ServiceUnavailableError):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().login("alice", "correct-horse")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception), "the identity service answered HTTP 200 without a token"
+        )
 
     def test_unavailable_a_200_without_a_token_is_not_a_login(self):
         with mock.patch(
             "urllib.request.urlopen", return_value=_mock_response({"tokenType": "Bearer"})
         ):
-            with self.assertRaises(ServiceUnavailableError):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().login("alice", "correct-horse")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception), "the identity service answered HTTP 200 without a token"
+        )
 
     def test_unavailable_a_200_with_a_garbage_body_is_not_a_valid_session(self):
         with mock.patch(
             "urllib.request.urlopen", return_value=_mock_response(None, text="not json")
         ):
-            with self.assertRaises(ServiceUnavailableError):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 200)
+        self.assertEqual(
+            str(ctx.exception), "the identity service answered 200 without a session"
+        )
 
+    # The service's own message is not carried into the error: a 5xx body is
+    # written for operators, and "upstream exploded" is not the "temporarily
+    # unavailable" a caller is meant to render.
     def test_unavailable_a_5xx_is_we_do_not_know_not_no(self):
         for status in (500, 502, 503):
             with self.subTest(status=status):
@@ -860,11 +875,19 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
                     with self.assertRaises(ServiceUnavailableError) as ctx:
                         client().login("alice", "correct-horse")
                 self.assertEqual(ctx.exception.status, status)
+                self.assertEqual(
+                    str(ctx.exception), "the identity service answered HTTP %d" % status
+                )
 
     def test_unavailable_a_5xx_on_register_does_not_become_that_name_is_taken(self):
-        with mock.patch("urllib.request.urlopen", side_effect=_http_error(503, {})):
-            with self.assertRaises(ServiceUnavailableError):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(503, {"message": "upstream exploded"}),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().register("alice", "Str0ng-Pass!")
+        self.assertEqual(ctx.exception.status, 503)
+        self.assertEqual(str(ctx.exception), "the identity service answered HTTP 503")
 
     # Only 200 and 201 are read as success. Any other 2xx is not a refusal
     # either -- the service did not say no -- so nothing is known.
@@ -955,9 +978,14 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
         )
 
     def test_unavailable_a_5xx_on_validate_does_not_sign_anybody_out(self):
-        with mock.patch("urllib.request.urlopen", side_effect=_http_error(503, {})):
-            with self.assertRaises(ServiceUnavailableError):
+        with mock.patch(
+            "urllib.request.urlopen",
+            side_effect=_http_error(503, {"message": "upstream exploded"}),
+        ):
+            with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().validate_session("t")
+        self.assertEqual(ctx.exception.status, 503)
+        self.assertEqual(str(ctx.exception), "the identity service answered HTTP 503")
 
     # Validate fails closed on every status but 200, so another 2xx is read as
     # no -- even with a body that would be a session on a 200 -- rather than as
@@ -1086,6 +1114,7 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             with self.assertRaises(ServiceUnavailableError) as ctx:
                 client().refresh_session("the-refresh-token")
         self.assertEqual(ctx.exception.status, 503)
+        self.assertEqual(str(ctx.exception), "the identity service answered HTTP 503")
 
     def test_logout_reports_a_5xx_as_unavailable_rather_than_raising_or_refusing(self):
         with mock.patch(
