@@ -732,37 +732,47 @@ describe('the three outcomes are kept apart', () => {
 
     it('UNAVAILABLE: a 200 with a garbage body is not a success', async () => {
         const {client} = clientWith([{status: 200, text: '<html>502 Bad Gateway</html>'}]);
-        await expect(client.login('alice', 'correct-horse')).rejects.toBeInstanceOf(
-            ServiceUnavailableError
-        );
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered HTTP 200 without a token');
     });
 
     it('UNAVAILABLE: a 200 with no token is not a login', async () => {
         const {client} = clientWith([{status: 200, body: {tokenType: 'Bearer'}}]);
-        await expect(client.login('alice', 'correct-horse')).rejects.toBeInstanceOf(
-            ServiceUnavailableError
-        );
+        const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered HTTP 200 without a token');
     });
 
     it('UNAVAILABLE: a 200 with a garbage body is not a valid session either', async () => {
         const {client} = clientWith([{status: 200, text: 'not json'}]);
-        await expect(client.validateSession('t')).rejects.toBeInstanceOf(ServiceUnavailableError);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(200);
+        expect((error as Error).message).toBe('the identity service answered 200 without a session');
     });
 
+    // The service's own message is not carried into the error: a 5xx body is
+    // written for operators, and "upstream exploded" is not the "temporarily
+    // unavailable" a caller is meant to render.
     it('UNAVAILABLE: a 5xx is "we do not know", not "no"', async () => {
         for (const status of [500, 502, 503]) {
             const {client} = clientWith([{status, body: {message: 'upstream exploded'}}]);
-            await expect(client.login('alice', 'correct-horse')).rejects.toBeInstanceOf(
-                ServiceUnavailableError
-            );
+            const error = await client.login('alice', 'correct-horse').catch((caught: unknown) => caught);
+            expect(error).toBeInstanceOf(ServiceUnavailableError);
+            expect((error as ServiceUnavailableError).status).toBe(status);
+            expect((error as Error).message).toBe(`the identity service answered HTTP ${status}`);
         }
     });
 
     it('UNAVAILABLE: a 5xx on register does not become "that name is taken"', async () => {
-        const {client} = clientWith([{status: 503, body: {}}]);
-        await expect(client.register('alice', 'Str0ng-Pass!')).rejects.toBeInstanceOf(
-            ServiceUnavailableError
-        );
+        const {client} = clientWith([{status: 503, body: {message: 'upstream exploded'}}]);
+        const error = await client.register('alice', 'Str0ng-Pass!').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(503);
+        expect((error as Error).message).toBe('the identity service answered HTTP 503');
     });
 
     // Only 200 and 201 are read as success. Any other 2xx is not a refusal
@@ -836,8 +846,11 @@ describe('the three outcomes are kept apart', () => {
     });
 
     it('UNAVAILABLE: a 5xx on validate does not sign anybody out', async () => {
-        const {client} = clientWith([{status: 503, body: {}}]);
-        await expect(client.validateSession('t')).rejects.toBeInstanceOf(ServiceUnavailableError);
+        const {client} = clientWith([{status: 503, body: {message: 'upstream exploded'}}]);
+        const error = await client.validateSession('t').catch((caught: unknown) => caught);
+        expect(error).toBeInstanceOf(ServiceUnavailableError);
+        expect((error as ServiceUnavailableError).status).toBe(503);
+        expect((error as Error).message).toBe('the identity service answered HTTP 503');
     });
 
     // Validate fails closed on every status but 200, so another 2xx is read
@@ -930,6 +943,7 @@ describe('the three outcomes are kept apart', () => {
         const error = await client.refreshSession('the-refresh-token').catch((caught: unknown) => caught);
         expect(error).toBeInstanceOf(ServiceUnavailableError);
         expect((error as ServiceUnavailableError).status).toBe(503);
+        expect((error as Error).message).toBe('the identity service answered HTTP 503');
     });
 
     it('logout reports a 5xx as unavailable rather than throwing or refusing', async () => {
