@@ -626,6 +626,18 @@ describe('logout', () => {
         expect(calls[0]!.headers['Authorization']).toBe('Bearer sometoken');
     });
 
+    it('reads any 2xx as revoked, a 200 or a 202 as well as a 204', async () => {
+        for (const status of [200, 202]) {
+            const {client} = clientWith([{status, body: {message: 'ignored on success'}}]);
+            await expect(client.logout('sometoken')).resolves.toEqual({
+                revoked: true,
+                unavailable: false,
+                status,
+                message: null
+            });
+        }
+    });
+
     it('reports a refusal without throwing', async () => {
         const {client} = clientWith([{status: 401, body: {message: 'token already expired'}}]);
         await expect(client.logout('stale')).resolves.toEqual({
@@ -935,9 +947,28 @@ describe('the three outcomes are kept apart', () => {
         // Note what this does NOT do: throw. A caller must be able to sign
         // somebody out of their own browser during an outage without wrapping
         // the call in a try block it might forget.
-        await expect(client.logout('sometoken')).resolves.toMatchObject({
+        await expect(client.logout('sometoken')).resolves.toEqual({
             revoked: false,
-            unavailable: true
+            unavailable: true,
+            status: null,
+            message: 'the identity service could not be reached'
+        });
+    });
+
+    // Unlike the other calls, logout does not tell a timeout apart from a
+    // refused connection in its message: either way nothing was answered, and
+    // the result is reported rather than acted on.
+    it('logout reports a timeout as unavailable, with no status, rather than throwing', async () => {
+        const hang = (async (_url: string, init: RequestInit = {}) =>
+            new Promise((_resolve, reject) => {
+                init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+            })) as unknown as typeof globalThis.fetch;
+        const client = new SessionClient({baseUrl: BASE_URL, fetch: hang, timeoutMs: 5});
+        await expect(client.logout('sometoken')).resolves.toEqual({
+            revoked: false,
+            unavailable: true,
+            status: null,
+            message: 'the identity service could not be reached'
         });
     });
 

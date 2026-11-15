@@ -19,6 +19,7 @@ from unittest import mock
 
 from session_client import (
     LoginSuccess,
+    LogoutResult,
     Refusal,
     RegisterSuccess,
     ServiceUnavailableError,
@@ -699,9 +700,28 @@ class TestLogout(unittest.TestCase):
             "urllib.request.urlopen", return_value=_mock_response({}, status=204)
         ) as m:
             result = client().logout("sometoken")
-        self.assertTrue(result.revoked)
-        self.assertFalse(result.unavailable)
+        self.assertEqual(
+            result,
+            LogoutResult(revoked=True, unavailable=False, status=204, message=None),
+        )
         self.assertEqual(sent_headers(m).get("Authorization"), "Bearer sometoken")
+
+    def test_any_2xx_reads_as_revoked_a_200_or_a_202_as_well_as_a_204(self):
+        for status in (200, 202):
+            with self.subTest(status=status):
+                with mock.patch(
+                    "urllib.request.urlopen",
+                    return_value=_mock_response(
+                        {"message": "ignored on success"}, status=status
+                    ),
+                ):
+                    result = client().logout("sometoken")
+                self.assertEqual(
+                    result,
+                    LogoutResult(
+                        revoked=True, unavailable=False, status=status, message=None
+                    ),
+                )
 
     def test_a_refusal_is_reported_without_raising(self):
         with mock.patch(
@@ -1089,8 +1109,31 @@ class TestTheThreeOutcomesAreKeptApart(unittest.TestCase):
             side_effect=urllib.error.URLError("connection refused"),
         ):
             result = client().logout("sometoken")
-        self.assertFalse(result.revoked)
-        self.assertTrue(result.unavailable)
+        self.assertEqual(
+            result,
+            LogoutResult(
+                revoked=False,
+                unavailable=True,
+                status=None,
+                message="the identity service could not be reached",
+            ),
+        )
+
+    # Unlike the other calls, logout does not tell a timeout apart from a
+    # refused connection in its message: either way nothing was answered, and
+    # the result is reported rather than acted on.
+    def test_logout_reports_a_timeout_as_unavailable_with_no_status_rather_than_raising(self):
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
+            result = client().logout("sometoken")
+        self.assertEqual(
+            result,
+            LogoutResult(
+                revoked=False,
+                unavailable=True,
+                status=None,
+                message="the identity service could not be reached",
+            ),
+        )
 
     def test_the_unavailable_error_leaks_neither_credential_nor_hostname(self):
         with mock.patch(
