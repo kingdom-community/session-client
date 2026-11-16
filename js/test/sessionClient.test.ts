@@ -543,6 +543,19 @@ describe('validateSession', () => {
         expect(result.ok).toBe(false);
     });
 
+    // A name and roles beside `valid: false` must not make it a session, and
+    // the refusal carries the 200 that was sent and the body that came with it.
+    it('refuses an explicit `valid: false` whatever name and roles come beside it', async () => {
+        const body = {valid: false, username: 'alice', roles: ['ROLE_USER']};
+        const {client} = clientWith([{status: 200, body}]);
+        await expect(client.validateSession('expiredtoken')).resolves.toEqual({
+            ok: false,
+            status: 200,
+            message: 'That session is not valid.',
+            raw: body
+        });
+    });
+
     it('refuses a missing token without making a network call', async () => {
         const {client, calls} = clientWith([{status: 200, body: {valid: true}}]);
         const result = await client.validateSession('');
