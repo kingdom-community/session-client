@@ -613,6 +613,17 @@ class TestValidateSession(unittest.TestCase):
             result = client().validate_session("expiredtoken")
         self.assertFalse(result.ok)
 
+    # A name and roles beside ``valid: false`` must not make it a session, and
+    # the refusal carries the 200 that was sent and the body that came with it.
+    def test_an_explicit_valid_false_refuses_whatever_name_and_roles_come_beside_it(self):
+        payload = {"valid": False, "username": "alice", "roles": ["ROLE_USER"]}
+        with mock.patch("urllib.request.urlopen", return_value=_mock_response(payload)):
+            result = client().validate_session("expiredtoken")
+        self.assertEqual(
+            result,
+            Refusal(status=200, message="That session is not valid.", raw=payload),
+        )
+
     def test_missing_token_is_refused_without_a_network_call(self):
         with mock.patch("urllib.request.urlopen") as mocked:
             result = client().validate_session("")
