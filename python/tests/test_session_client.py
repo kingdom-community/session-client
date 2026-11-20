@@ -663,6 +663,17 @@ class TestValidateSession(unittest.TestCase):
             result = client().validate_session("t")
         self.assertEqual(result.roles, ["ROLE_USER"])
 
+    def test_roles_that_are_not_a_list_are_no_roles_never_one_per_character(self):
+        for roles in ("ROLE_ADMIN", {"0": "ROLE_ADMIN"}, 7, True, None):
+            payload = {"valid": True, "username": "alice", "roles": roles}
+            with self.subTest(roles=roles), mock.patch(
+                "urllib.request.urlopen", return_value=_mock_response(payload)
+            ):
+                result = client().validate_session("t")
+                self.assertTrue(result.ok)
+                self.assertEqual(result.username, "alice")
+                self.assertEqual(result.roles, [])
+
 
 class TestRefreshSession(unittest.TestCase):
     def test_returns_the_rotated_pair(self):

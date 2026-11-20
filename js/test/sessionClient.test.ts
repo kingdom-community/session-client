@@ -594,6 +594,17 @@ describe('validateSession', () => {
         ]);
         await expect(client.validateSession('t')).resolves.toMatchObject({roles: ['ROLE_USER']});
     });
+
+    it('reads roles that are not a list as no roles, never as one role per character', async () => {
+        for (const roles of ['ROLE_ADMIN', {0: 'ROLE_ADMIN'}, 7, true, null]) {
+            const {client} = clientWith([{status: 200, body: {valid: true, username: 'alice', roles}}]);
+            await expect(client.validateSession('t')).resolves.toMatchObject({
+                ok: true,
+                username: 'alice',
+                roles: []
+            });
+        }
+    });
 });
 
 describe('refreshSession', () => {
